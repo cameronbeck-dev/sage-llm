@@ -1,0 +1,49 @@
+{
+  "name": "sage",
+  "description": "Cost-optimized, provider-agnostic LLM chat interface",
+  "keywords": ["llm", "ai", "chat"],
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0"
+    }
+  ],
+  "env": {
+    "SESSION_SECRET": {
+      "description": "32+ byte random secret for signing cookies",
+      "generator": "secret"
+    },
+    "SAGE_ENC_KEY": {
+      "description": "32-byte base64 key for AES-256-GCM encryption of API keys",
+      "generator": "secret"
+    },
+    "GITHUB_CLIENT_ID": {
+      "description": "GitHub OAuth App client ID"
+    },
+    "GITHUB_CLIENT_SECRET": {
+      "description": "GitHub OAuth App client secret"
+    },
+    "OAUTH_REDIRECT_URI": {
+      "description": "GitHub OAuth callback URL (https://your-app.herokuapp.com/auth/github/callback)"
+    },
+    "DEFAULT_PROVIDER": {
+      "description": "Default LLM provider ID",
+      "value": "openai"
+    },
+    "DEFAULT_MODEL": {
+      "description": "Default model ID",
+      "value": "gpt-4o-mini"
+    },
+    "NODE_ENV": {
+      "value": "production"
+    }
+  }
+}

@@ -1,0 +1,71 @@
+@import './tokens.css';
+@import './pixel.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+}
+
+.sage-root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px;
+}
+
+.sage-hello {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  max-width: 400px;
+  width: 100%;
+}
+
+.sage-avatar {
+  width: 80px;
+  height: 80px;
+  background: var(--accent-dim);
+  border: 3px solid var(--accent);
+  box-shadow: 4px 4px 0 #0a0b09;
+  border-radius: 2px;
+}
+
+.sage-dialog {
+  width: 100%;
+  padding: 16px;
+  border: 3px solid var(--accent);
+  background: var(--bg-surface);
+  box-shadow: 4px 4px 0 #0a0b09;
+}
+
+.sage-dialog-text {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.sage-dialog-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
