@@ -5,6 +5,67 @@ import { triggerToast } from '../components/ui/ToastContainer.js';
 
 type ProviderId = 'openai' | 'minimax';
 
+// AGENTS.md editor section
+function AgentInstructionsSection() {
+  const [agentsContent, setAgentsContent] = useState('');
+  const [agentsSaving, setAgentsSaving] = useState(false);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/docs/AGENTS.md')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAgentsContent(d.content); })
+      .finally(() => setAgentsLoading(false));
+  }, []);
+
+  async function handleAgentsSave() {
+    setAgentsSaving(true);
+    try {
+      const res = await fetch('/api/docs/AGENTS.md', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: agentsContent }),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      triggerToast('Agent instructions saved.', 'success');
+    } catch (err) {
+      triggerToast((err as Error).message, 'error');
+    } finally {
+      setAgentsSaving(false);
+    }
+  }
+
+  return (
+    <section className="settings-section pixel-border">
+      <h2 className="settings-section__title">Agent Instructions</h2>
+      <p className="settings-info">
+        Edit the AGENTS.md file that controls how Sage behaves. This is raw Markdown — no preview.
+      </p>
+      {agentsLoading ? (
+        <p className="settings-info">Loading...</p>
+      ) : (
+        <>
+          <textarea
+            className="settings-textarea"
+            value={agentsContent}
+            onChange={e => setAgentsContent(e.target.value)}
+            rows={16}
+          />
+          <div style={{ marginTop: 8 }}>
+            <button
+              className="btn btn--primary"
+              onClick={handleAgentsSave}
+              disabled={agentsSaving}
+            >
+              {agentsSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 interface CredentialSectionProps {
   providerId: ProviderId;
   displayName: string;
@@ -260,6 +321,8 @@ export default function Settings() {
           })}
         </div>
       </section>
+
+      <AgentInstructionsSection />
     </div>
   );
 }

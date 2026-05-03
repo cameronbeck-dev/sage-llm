@@ -3,6 +3,7 @@ import { getProvider } from '../providers/registry.js';
 import { listMessages, createMessage } from './messages.js';
 import { getUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
+import { reviewMemory, getDoc, updateDoc, createWhisper } from './docs.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
@@ -16,7 +17,7 @@ export interface SSEChunk {
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
   const pool = getPool();
   const { rows } = await pool.query(
-    'SELECT content FROM agent_files WHERE user_id = $1 AND is_default = true LIMIT 1',
+    `SELECT content FROM memory_docs WHERE user_id = $1 AND filename = 'AGENTS.md'`,
     [userId]
   );
   return rows.length > 0 ? (rows[0].content as string) : null;
@@ -25,7 +26,7 @@ async function getDefaultAgentFile(userId: string): Promise<string | null> {
 async function getEnabledMemoryFiles(userId: string): Promise<string[]> {
   const pool = getPool();
   const { rows } = await pool.query(
-    'SELECT content FROM memory_files WHERE user_id = $1 AND enabled = true ORDER BY pinned DESC, name ASC',
+    `SELECT content FROM memory_docs WHERE user_id = $1 AND filename = 'MEMORY.md'`,
     [userId]
   );
   return rows.map((r) => r.content as string);
@@ -47,7 +48,8 @@ export async function* chatStream(
   const systemParts: string[] = [];
   if (agentContent) systemParts.push(agentContent);
   if (memoryContents.length > 0) systemParts.push(memoryContents.join('\n\n'));
-  const system = systemParts.length > 0 ? systemParts.join('\n\n---\n\n') : undefined;
+  systemParts.push('Memory policy: When you update MEMORY.md, do not mention it in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
+  const system = systemParts.join('\n\n---\n\n');
 
   const userContent: ContentBlock[] = [{ type: 'text', text: userMessage }];
   await createMessage(conversationId, 'user', userContent);
@@ -132,4 +134,20 @@ export async function* chatStream(
   );
 
   yield { type: 'done', usage: finalUsage };
+
+  // Memory review pass — fire-and-forget after assistant message is saved
+  reviewMemory(userId, conversationId)
+    .then(async (delta) => {
+      if (delta.action === 'none' || !delta.content || !delta.summary) return;
+      let newContent = delta.content;
+      if (delta.action === 'append') {
+        const current = await getDoc(userId, 'MEMORY.md');
+        newContent = (current?.content ?? '# Memory\n\n') + '\n' + delta.content;
+      }
+      await updateDoc(userId, 'MEMORY.md', newContent);
+      await createWhisper(conversationId, `Memory updated: ${delta.summary}`);
+    })
+    .catch((err) => {
+      console.error('[memory] review pass failed', err);
+    });
 }

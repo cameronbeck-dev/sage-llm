@@ -2,7 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface MessageBubbleProps {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'whisper';
   content: string;
   isStreaming?: boolean;
   isError?: boolean;
@@ -10,6 +10,16 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble({ role, content, isStreaming, isError, thinking }: MessageBubbleProps) {
+  if (role === 'whisper') {
+    return (
+      <div className="message-bubble message-bubble--whisper">
+        <div className="message-bubble__content message-bubble__content--whisper">
+          {content}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`message-bubble message-bubble--${role}${isError ? ' message-bubble--error' : ''}${isStreaming && !isError ? ' message-bubble--thinking' : ''}`}>
       {thinking !== undefined && (thinking !== '' || isStreaming) && (

@@ -616,6 +616,18 @@ body {
   gap: 6px;
 }
 
+.settings-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px;
+  resize: vertical;
+  min-height: 120px;
+}
+
 .settings-label {
   font-size: 12px;
   color: var(--text-muted);
@@ -901,4 +913,19 @@ details[open] > .message-bubble__thinking-summary::before {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
+}
+
+/* Whisper messages — ambient memory updates */
+.message-bubble--whisper {
+  justify-content: flex-start;
+  margin: 4px 0;
+}
+
+.message-bubble__content--whisper {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+  background: transparent;
+  border-left: 2px solid var(--border-dim);
+  padding-left: 8px;
 }

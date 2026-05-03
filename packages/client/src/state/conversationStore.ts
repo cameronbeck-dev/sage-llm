@@ -43,10 +43,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async createConversation(title) {
+    const prevId = this.activeConversationId;
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, previousId: prevId }),
     });
     if (!res.ok) throw new Error('Failed to create conversation');
     const convo = (await res.json()) as Conversation;

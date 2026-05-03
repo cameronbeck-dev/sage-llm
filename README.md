@@ -9,11 +9,12 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 ## Features
 
 - **Multi-Provider Support** — OpenAI, Minimax; plug in new providers with one file
-- **Persistent History** — Conversations, messages, agent files, and memory documents stored in PostgreSQL
-- **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are独立
+- **Persistent History** — Conversations and messages stored in PostgreSQL
+- **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are independent
 - **GitHub OAuth** — No passwords; login with your GitHub account
 - **SSE Streaming** — Responses stream in real-time
-- **Agent & Memory Files** — Editable system prompts and context documents, synced per user
+- **Persistent Memory** — Sage learns about you over time: AGENTS.md (editable instructions), MEMORY.md (learned facts), SUMMARIES.json (conversation history, capped at 20)
+- **Whisper Messages** — Memory updates appear inline in chat as subtle ambient notes
 - **Audit Logging** — All credential operations logged immutably
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
@@ -164,6 +165,8 @@ All routes require authentication unless noted.
 | `PUT` | `/api/settings/credentials/:provider` | Store/encrypt an API key |
 | `GET` | `/api/settings/credentials/:provider` | Check if key is stored |
 | `DELETE` | `/api/settings/credentials/:provider` | Remove stored key |
+| `GET` | `/api/docs/:filename` | Get a memory doc (AGENTS.md, MEMORY.md, SUMMARIES.json) |
+| `PUT` | `/api/docs/AGENTS.md` | Update agent instructions (user-editable) |
 | `GET` | `/api/health` | Health check (unauthenticated) |
 
 ---
@@ -179,7 +182,8 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `conversations` — archived flag, timestamps
 - `messages` — role, content (JSON), provider/model, token usage, cost
 - `credentials` — encrypted API key envelopes per user per provider
-- `agent_files` / `memory_files` — per-user editable context files
+- `memory_docs` — per-user memory files: AGENTS.md, MEMORY.md, SUMMARIES.json
+- `welcome_templates` — seeded welcome message content
 - `audit_logs` — immutable credential operation audit trail
 - `_migrations` — tracks applied SQL files
 

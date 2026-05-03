@@ -56,6 +56,33 @@ export default function Chat() {
     const text = inputText.trim();
     if (!text || isSendingRef.current || isStreaming) return;
 
+    // Handle /setup command — restart onboarding
+    if (text === '/setup') {
+      setInputText('');
+      try {
+        const newId = await useConversationStore.getState().createConversation('Welcome');
+        await useConversationStore.getState().setActive(newId);
+        // Fetch welcome template and persist as assistant message in DB
+        const templateRes = await fetch('/api/docs/system/welcome-template');
+        if (templateRes.ok) {
+          const { content } = await templateRes.json() as { content: string };
+          // Persist welcome message to DB
+          const msgRes = await fetch(`/api/conversations/${newId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'assistant', content: [{ type: 'text', text: content }] }),
+          });
+          if (msgRes.ok) {
+            const savedMsg = await msgRes.json();
+            useConversationStore.getState().addMessage(savedMsg);
+          }
+        }
+      } catch (err) {
+        setStreamingError(`Error: ${(err as Error).message}`);
+      }
+      return;
+    }
+
     isSendingRef.current = true;
     try {
       let conversationId = activeConversationId;
@@ -115,6 +142,14 @@ export default function Chat() {
             } else {
               stopStreaming();
               finalizeStreaming();
+              // Refetch messages to pick up any whispers created by memory review
+              if (conversationId) {
+                const msgRes = await fetch(`/api/conversations/${conversationId}`);
+                if (msgRes.ok) {
+                  const data = await msgRes.json() as Conversation & { messages: Message[] };
+                  set((s) => ({ activeMessages: data.messages }));
+                }
+              }
             }
           }
         }
@@ -198,7 +233,7 @@ export default function Chat() {
             return (
               <MessageBubble
                 key={msg.id}
-                role={msg.role as 'user' | 'assistant'}
+                role={msg.role as 'user' | 'assistant' | 'whisper'}
                 content={text}
                 isStreaming={msg.id === thinkingMessageId && isStreaming}
                 isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}

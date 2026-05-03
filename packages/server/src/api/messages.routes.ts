@@ -2,20 +2,44 @@ import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
 import { chatStream } from '../services/chat.js';
 import { getConversation } from '../services/conversations.js';
+import { createMessage } from '../services/messages.js';
+import type { ContentBlock } from '@sage/shared';
 
 export const messagesRouter = Router({ mergeParams: true });
 
 messagesRouter.post('/', requireAuth, async (req, res, next) => {
   const { id: conversationId } = req.params;
-  const { message } = req.body as { message?: string };
+  const { message, role, content } = req.body as {
+    message?: string;
+    role?: string;
+    content?: ContentBlock[];
+  };
+
+  // Support direct message creation (for /setup, whispers, etc.)
+  if (role && content) {
+    try {
+      const convo = await getConversation(req.session!.userId!, conversationId);
+      if (!convo) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found' } });
+        return;
+      }
+      const msgId = await createMessage(conversationId, role, content);
+      res.status(201).json({ id: msgId, conversationId, role, content, createdAt: new Date().toISOString() });
+      return;
+    } catch (err) {
+      next(err);
+      return;
+    }
+  }
 
   if (!message || typeof message !== 'string' || message.trim() === '') {
     res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'message is required' } });
     return;
   }
 
+  let convo;
   try {
-    const convo = await getConversation(req.session!.userId!, conversationId);
+    convo = await getConversation(req.session!.userId!, conversationId);
     if (!convo) {
       res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found' } });
       return;

@@ -3,6 +3,50 @@ import { fetch } from 'undici';
 import { config } from '../config.js';
 import { getPool } from '../db/pool.js';
 
+async function seedWelcomeConversation(userId: string): Promise<void> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Create welcome conversation
+    const { rows: convoRows } = await client.query<{ id: string }>(
+      `INSERT INTO conversations (user_id, title) VALUES ($1, $2) RETURNING id`,
+      [userId, 'Welcome']
+    );
+    const convoId = convoRows[0].id;
+
+    // Get welcome template
+    const { rows: templateRows } = await client.query<{ content: string }>(
+      'SELECT content FROM welcome_templates ORDER BY created_at ASC LIMIT 1'
+    );
+
+    if (templateRows.length > 0) {
+      await client.query(
+        `INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)`,
+        [convoId, JSON.stringify([{ type: 'text', text: templateRows[0].content }])]
+      );
+    }
+
+    // Seed memory_docs with defaults
+    await client.query(
+      `INSERT INTO memory_docs (user_id, filename, content) VALUES
+       ($1, 'AGENTS.md', '# Agents\n\nYou are a helpful AI assistant.'),
+       ($1, 'MEMORY.md', '# Memory\n\n'),
+       ($1, 'SUMMARIES.json', '{"entries": []}')
+      ON CONFLICT (user_id, filename) DO NOTHING`,
+      [userId]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[auth] failed to seed welcome conversation', err);
+  } finally {
+    client.release();
+  }
+}
+
 export const githubAuthRouter = Router();
 
 githubAuthRouter.get('/github', (_req, res) => {
@@ -82,6 +126,9 @@ githubAuthRouter.get('/github/callback', async (req, res) => {
        ON CONFLICT (user_id) DO NOTHING`,
       [userId]
     );
+
+    // Seed welcome conversation and memory docs
+    await seedWelcomeConversation(userId);
 
     req.session!.userId = userId;
     req.session!.github = {

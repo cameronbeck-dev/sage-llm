@@ -1,4 +1,4 @@
-export type Role = 'user' | 'assistant' | 'system';
+export type Role = 'user' | 'assistant' | 'system' | 'whisper';
 
 export type ContentBlock =
   | { type: 'text'; text: string }
