@@ -1,11 +1,15 @@
-// Phase 1: Provider registry — getProvider(id)
 import type { LLMProvider } from './types.js';
+import { openaiProvider } from './openai.js';
+import { minimaxProvider } from './minimax.js';
 
 const registry = new Map<string, LLMProvider>();
 
-export function registerProvider(provider: LLMProvider): void {
+function registerProvider(provider: LLMProvider): void {
   registry.set(provider.id, provider);
 }
+
+registerProvider(openaiProvider);
+registerProvider(minimaxProvider);
 
 export function getProvider(id: string): LLMProvider {
   const provider = registry.get(id);

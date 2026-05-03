@@ -1,5 +1,6 @@
 :root {
   --bg: #1f221d;
+  --bg-elev: #252820;
   --bg-surface: #272b24;
   --bg-raised: #2f342b;
   --accent: #6cf08a;
@@ -8,10 +9,10 @@
   --text-muted: #8a8a7a;
   --border: #4a4f42;
   --border-dim: #363b30;
-  --error: #f08a6c;
+  --danger: #f08a6c;
   --warning: #f0d46c;
 
-  --font-heading: 'Press Start 2P', monospace;
+  --font-heading: 'Bungee', cursive;
   --font-body: 'Inter', system-ui, sans-serif;
 
   --radius: 2px;

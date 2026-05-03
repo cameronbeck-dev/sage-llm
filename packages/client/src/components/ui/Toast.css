@@ -1,0 +1,30 @@
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: var(--font-body);
+  z-index: 1000;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.toast--hidden {
+  opacity: 0;
+}
+
+.toast--success {
+  background: rgba(108, 240, 138, 0.15);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+}
+
+.toast--error {
+  background: rgba(240, 138, 108, 0.15);
+  border: 2px solid var(--danger);
+  color: var(--danger);
+}

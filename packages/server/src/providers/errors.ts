@@ -1,5 +1,5 @@
-// Phase 1: Normalized provider errors
 export class AuthError extends Error {
+  readonly retryable = false;
   constructor(provider: string) {
     super(`Authentication failed for provider: ${provider}`);
     this.name = 'AuthError';
@@ -7,6 +7,7 @@ export class AuthError extends Error {
 }
 
 export class RateLimitError extends Error {
+  readonly retryable = true;
   retryAfter?: number;
   constructor(provider: string, retryAfter?: number) {
     super(`Rate limit exceeded for provider: ${provider}`);

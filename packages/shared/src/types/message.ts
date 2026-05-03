@@ -16,4 +16,5 @@ export interface Message {
   outputTokens?: number;
   costUsd?: number;
   createdAt: string;
+  thinking?: string;
 }

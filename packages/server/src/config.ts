@@ -5,13 +5,27 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().optional(),
   SESSION_SECRET: z.string().default('dev-secret-change-in-production'),
+  // Encryption key for credentials at rest.
+  // Required in production (use Heroku Secrets, AWS Secrets Manager, etc).
+  // Optional in development — if omitted, credential operations will fail at runtime.
   SAGE_ENC_KEY: z.string().optional(),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   OAUTH_REDIRECT_URI: z.string().optional(),
+  CLIENT_URL: z.string().default(''),
   DEFAULT_PROVIDER: z.string().default('openai'),
   DEFAULT_MODEL: z.string().default('gpt-4o-mini'),
 });
 
-export const config = envSchema.parse(process.env);
+// Validate SAGE_ENC_KEY is present when running in production
+const result = envSchema.safeParse(process.env);
+
+if (!result.success && result.error.issues.some((i) => i.path.includes('SAGE_ENC_KEY'))) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SAGE_ENC_KEY is required in production. Set it via your secrets manager (Heroku Secrets, AWS Secrets Manager, etc).');
+  }
+  // In dev/test, allow startup without the key — credential ops will fail at runtime
+}
+
+export const config = result.success ? result.data : envSchema.parse(process.env);
 export type Config = typeof config;

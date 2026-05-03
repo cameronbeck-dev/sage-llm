@@ -2,251 +2,263 @@
 
 **One elegant interface. Any LLM. Anytime.**
 
-Sage is a cost-optimized, provider-agnostic LLM interface built for flexibility. Switch between OpenAI, Anthropic, Minimax, or any supported provider with a single configuration change. Maintain persistent conversation history, agent files, and memory documents across all your models—just like Claude Code, but for any LLM you choose.
-
----
-
-## Why Sage?
-
-**Cost Optimization** — Different providers offer different value. Minimax's pricing is currently unbeatable for quality. Switch providers whenever it makes sense, without rebuilding your entire workflow.
-
-**Provider Agility** — The LLM landscape evolves fast. Don't lock yourself into one vendor. Sage lets you experiment with new models the moment they launch, and switch back when you prefer.
-
-**Persistent Memory** — Conversations, agent files, and memory documents persist across all providers. Your context is never lost, even when you swap models mid-project.
-
-**Extensible Architecture** — Adding a new provider takes minutes, not days. Build once, extend forever.
+Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between OpenAI, Minimax, and future providers without losing conversation history, agent files, or memory documents.
 
 ---
 
 ## Features
 
-- 🧙 **Sage Guide** — Meet your wise elder AI assistant, guiding you through conversations in a serene, muted-green interface with vibrant green accents
-- 🔄 **Multi-Provider Support** — Switch between OpenAI, Anthropic, Minimax, and more with a settings click
-- 💾 **Persistent History** — All conversations, agent files, and memory documents live on your server
-- 🔐 **OAuth Authentication** — Secure login with industry-standard token encryption
-- 📝 **Agent & Memory Files** — Editable agent definitions and memory files, updated in real-time within the UI
-- 🚀 **Heroku Ready** — Deploy in minutes with built-in Heroku configuration
-- 🎨 **Pokemon-Inspired Pixel Aesthetic** — Charming retro styling with muted tones and vibrant green highlights
+- **Multi-Provider Support** — OpenAI, Minimax; plug in new providers with one file
+- **Persistent History** — Conversations, messages, agent files, and memory documents stored in PostgreSQL
+- **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are独立
+- **GitHub OAuth** — No passwords; login with your GitHub account
+- **SSE Streaming** — Responses stream in real-time
+- **Agent & Memory Files** — Editable system prompts and context documents, synced per user
+- **Audit Logging** — All credential operations logged immutably
+- **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, React Router 6, Zustand (state), Vite |
+| **Backend** | Express, TypeScript, pg (PostgreSQL pool) |
+| **Auth** | GitHub OAuth via `cookie-session` |
+| **Encryption** | AES-256-GCM (`node:crypto`) |
+| **LLM Streaming** | Server-Sent Events (SSE) |
+| **Deployment** | Single Express serve; client built into `/public` |
+
+---
+
+## Prerequisites
+
+- Node.js 20+
+- PostgreSQL 14+ (or a hosted provider like Supabase, Neon, Render)
+- GitHub OAuth App ([create one](https://github.com/settings/developers))
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-- Node.js 16+
-- PostgreSQL (or your choice of database)
-- OAuth credentials (GitHub recommended)
-- API keys for your chosen LLM provider(s)
-
 ### 1. Clone & Install
+
 ```bash
-git clone <repo-url>
-cd sage
+git clone https://github.com/cameronbeck-dev/sage-llm.git
+cd sage-llm
 npm install
 ```
 
-### 2. Configure Environment Variables
-Create a `.env.local` file in the root:
+### 2. Configure Environment
+
+Copy `.env.example` to `.env`:
+
 ```env
-# OAuth
-OAUTH_CLIENT_ID=your_github_oauth_client_id
-OAUTH_CLIENT_SECRET=your_github_oauth_client_secret
-OAUTH_REDIRECT_URI=http://localhost:3000/auth/callback
+DATABASE_URL=postgresql://localhost:5432/sage
+PORT=3001
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/sage
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+SESSION_SECRET=<32+ random bytes>
 
-# LLM Providers (encrypted on server, never exposed to frontend)
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-MINIMAX_API_KEY=...
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# REQUIRED in production. Optional in dev (credential ops will fail without it).
+SAGE_ENC_KEY=<64 hex chars>
 
-# Default provider
-DEFAULT_PROVIDER=minimax
-DEFAULT_MODEL=minimax-text-01
+GITHUB_CLIENT_ID=<from GitHub OAuth App>
+GITHUB_CLIENT_SECRET=<from GitHub OAuth App>
+OAUTH_REDIRECT_URI=http://localhost:3001/api/auth/github/callback
+
+CLIENT_URL=http://localhost:5173
+
+DEFAULT_PROVIDER=openai
+DEFAULT_MODEL=gpt-4o-mini
 ```
 
-### 3. Run Locally
+### 3. Create GitHub OAuth App
+
+1. Go to **GitHub → Settings → Developer Settings → OAuth Apps → New OAuth App**
+2. **Homepage URL**: `http://localhost:5173`
+3. **Authorization callback URL**: `http://localhost:3001/api/auth/github/callback`
+4. Copy Client ID and Secret into `.env`
+
+### 4. Run Migrations
+
+```bash
+npm run migrate
+```
+
+Migrations also run automatically on server startup when `DATABASE_URL` is set.
+
+### 5. Start Development
+
 ```bash
 npm run dev
 ```
-Visit `http://localhost:3000` and log in via OAuth.
 
-### 4. Configure Your LLM Provider
-Once logged in, visit **Settings** → **LLM Provider** and select which provider + model to use. Sage remembers your choice and persists it to your account.
+- **Server**: `http://localhost:3001`
+- **Client**: `http://localhost:5173` (Vite dev server with HMR)
+
+### 6. Add Your API Key
+
+1. Open `http://localhost:5173` and log in with GitHub
+2. Go to **Settings → API Keys**
+3. Enter your provider API key (validated against the real provider before saving)
+
+---
+
+## Project Structure
+
+```
+sage/
+├── packages/
+│   ├── shared/           # Types shared between server and client
+│   │   └── src/types/   # Message, Conversation, ModelInfo, ContentBlock
+│   ├── server/          # Express API
+│   │   └── src/
+│   │       ├── api/         # Route handlers (auth, conversations, messages, providers, settings)
+│   │       ├── auth/         # GitHub OAuth, session middleware, requireAuth
+│   │       ├── crypto/       # AES-256-GCM encrypt/decrypt
+│   │       ├── db/           # pg pool, migrations, pool singleton
+│   │       ├── providers/    # LLMProvider interface + OpenAI + Minimax implementations
+│   │       ├── services/     # Business logic (chat, conversations, messages, settings, credentials, audit)
+│   │       ├── middleware/    # Helmet security headers, global error handler
+│   │       └── index.ts      # Express app entry, startup, migration
+│   └── client/          # React SPA
+│       └── src/
+│           ├── api/          # SSE client (streamChat.ts)
+│           ├── components/   # SageAvatar, MessageBubble, ConfirmModal
+│           ├── hooks/        # useSageState (avatar animation + messages)
+│           ├── pages/        # Login, Chat, Settings
+│           ├── state/         # Zustand stores (auth, conversation, settings)
+│           ├── styles/        # CSS tokens, pixel art classes, global styles
+│           └── router.tsx    # React Router v6 route definitions
+├── scripts/
+│   ├── dev.mjs          # Dev runner (concurrently starts server + client)
+│   └── postbuild.mjs    # Production build (copies client/dist + migrations to server/dist)
+├── .env.example
+└── README.md
+```
+
+---
+
+## API Routes
+
+All routes require authentication unless noted.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/auth/github` | Redirect to GitHub OAuth |
+| `GET` | `/api/auth/github/callback` | GitHub OAuth callback |
+| `GET` | `/api/conversations` | List user's conversations |
+| `POST` | `/api/conversations` | Create new conversation |
+| `GET` | `/api/conversations/:id` | Get conversation + messages |
+| `PATCH` | `/api/conversations/:id` | Update title or archived status |
+| `DELETE` | `/api/conversations/:id` | Delete conversation |
+| `GET` | `/api/conversations/:id/messages` | List messages in conversation |
+| `POST` | `/api/conversations/:id/messages` | Send a message (triggers SSE chat stream) |
+| `GET` | `/api/providers` | List all providers with models and key status |
+| `POST` | `/api/providers/:provider/models` | List models for a specific provider |
+| `GET` | `/api/settings` | Get user settings + credential status |
+| `PUT` | `/api/settings` | Update active provider/model/theme |
+| `PUT` | `/api/settings/credentials/:provider` | Store/encrypt an API key |
+| `GET` | `/api/settings/credentials/:provider` | Check if key is stored |
+| `DELETE` | `/api/settings/credentials/:provider` | Remove stored key |
+| `GET` | `/api/health` | Health check (unauthenticated) |
+
+---
+
+## Database Schema
+
+Migrations live in `packages/server/src/db/migrations/` and run on startup.
+
+**Key tables:**
+
+- `users` — GitHub OAuth identity
+- `user_settings` — active provider, model, theme per user
+- `conversations` — archived flag, timestamps
+- `messages` — role, content (JSON), provider/model, token usage, cost
+- `credentials` — encrypted API key envelopes per user per provider
+- `agent_files` / `memory_files` — per-user editable context files
+- `audit_logs` — immutable credential operation audit trail
+- `_migrations` — tracks applied SQL files
 
 ---
 
 ## Supported Providers
 
-| Provider | API Key | Models | Notes |
-|----------|---------|--------|-------|
-| **OpenAI** | `OPENAI_API_KEY` | GPT-4, GPT-4 Turbo, GPT-3.5 | Market leader; higher cost |
-| **Anthropic** | `ANTHROPIC_API_KEY` | Claude 3 (Opus, Sonnet, Haiku) | Strong reasoning; competitive pricing |
-| **Minimax** | `MINIMAX_API_KEY` | MiniMax-Text-01 | Excellent cost/quality ratio; fastest growing |
+| Provider | Models | Notes |
+|----------|--------|-------|
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo` | API key validated on save |
+| **Minimax** | `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.1` | Uses Anthropic-compatible endpoint |
 
 ### Adding a New Provider
 
-Implement the `LLMProvider` interface in `src/server/providers/`:
-```typescript
-export interface LLMProvider {
-  name: string;
-  apiKey: string;
-  listModels(): Promise<Model[]>;
-  chat(messages: Message[], model: string): Promise<string>;
-}
-```
-
-See `src/server/providers/openai.ts` for a reference implementation. Register it in `src/server/providers/index.ts`.
-
----
-
-## Configuration Examples
-
-### Example 1: Start with Minimax (Default)
-```env
-DEFAULT_PROVIDER=minimax
-DEFAULT_MODEL=minimax-text-01
-MINIMAX_API_KEY=sk-minimax-xxx
-```
-
-### Example 2: Switch to Claude (Anthropic)
-Visit Settings → LLM Provider → Select "Anthropic" → "Claude 3 Opus"
-
-Your conversation history stays intact. No data loss.
-
-### Example 3: Cost Optimization Workflow
-1. Use Minimax for most work (cheapest)
-2. Switch to Claude when you need stronger reasoning
-3. Use GPT-4 for specialized tasks
-4. All within one interface, one persistent history
+1. Create `packages/server/src/providers/<provider>.ts` implementing `LLMProvider`:
+   ```typescript
+   interface LLMProvider {
+     id: string;
+     displayName: string;
+     listModels(creds: ResolvedCredentials): Promise<ModelInfo[]>;
+     *chatStream(req: ChatRequest, creds: ResolvedCredentials): AsyncIterable<ChatChunk>;
+     estimateCost(model: string, usage: Usage): number;
+   }
+   ```
+2. Import and call `registerProvider(yourProvider)` in `packages/server/src/providers/registry.ts`
 
 ---
 
-## Agent & Memory Files
+## Deployment
 
-Sage supports persistent agent definitions and memory documents, editable directly in the UI:
+### Render (Recommended)
 
-- **Agent Files** — Define custom system prompts, instructions, or model-specific behaviors
-- **Memory Files** — Maintain long-term context, preferences, and reference documents
+1. Create a **Web Service**
+2. Set build command: `npm run build`
+3. Set start command: `cd packages/server && npm start`
+4. Add environment variables from `.env.example`
+5. Provision a **Render PostgreSQL** and set `DATABASE_URL`
 
-These files sync to your database and are available across all conversations and providers.
+### Heroku
 
-**UI Location:** Conversation → Files sidebar → Create/Edit Agent or Memory file
-
----
-
-## Architecture
-
-```
-sage/
-├── frontend/          # React + pixel art UI
-├── backend/           # Node.js/Express API
-├── src/
-│   ├── server/
-│   │   ├── providers/ # LLM provider implementations
-│   │   ├── auth/      # OAuth & token management
-│   │   ├── db/        # Database models & migrations
-│   │   └── api/       # REST endpoints
-│   └── client/
-│       ├── pages/     # React pages
-│       ├── components/ # Reusable UI components
-│       └── styles/    # Pixel art theming
-├── .env.local         # Your local secrets (git-ignored)
-└── package.json
-```
-
-**Single monorepo** — frontend and backend together, deployed as one unit.
-
----
-
-## Deployment to Heroku
-
-### 1. Create a Heroku App
 ```bash
 heroku create sage-yourname
-```
-
-### 2. Add PostgreSQL
-```bash
-heroku addons:create heroku-postgresql:standard-0 --app sage-yourname
-```
-
-### 3. Set Environment Variables
-```bash
-heroku config:set OAUTH_CLIENT_ID=xxx OAUTH_CLIENT_SECRET=xxx \
-  OPENAI_API_KEY=xxx ANTHROPIC_API_KEY=xxx MINIMAX_API_KEY=xxx \
-  --app sage-yourname
-```
-
-### 4. Deploy
-```bash
+heroku addons:create heroku-postgresql:standard-0
+heroku config:set \
+  SESSION_SECRET=<...> \
+  SAGE_ENC_KEY=<...> \
+  GITHUB_CLIENT_ID=xxx \
+  GITHUB_CLIENT_SECRET=xxx \
+  OAUTH_REDIRECT_URI=https://sage-yourname.herokuapp.com/api/auth/github/callback \
+  CLIENT_URL=https://sage-yourname.herokuapp.com
 git push heroku main
 ```
 
-Your Sage instance is now live. Visit `https://sage-yourname.herokuapp.com`.
+The `Procfile` runs migrations in the release phase before the web process starts.
 
 ---
 
 ## Security
 
-**API Keys** — Stored encrypted in your database. Never logged, never exposed to the frontend. Backend-only access.
-
-**OAuth** — GitHub OAuth (or your choice). No passwords stored locally. No plaintext credentials in the browser.
-
-**HTTPS** — Always use HTTPS in production. Heroku provides this by default.
-
-**Token Encryption** — All API keys are encrypted at rest using industry-standard encryption (AES-256).
-
-**Rate Limiting** — Respect provider rate limits. Implement backoff/retry logic.
+- **Encrypted Credentials** — API keys encrypted with AES-256-GCM before storage. The plaintext key never touches the DB, logs, or client.
+- **SAGE_ENC_KEY Required in Production** — The server refuses to start in production without it.
+- **Per-User Keys** — Each user has independent credentials; no shared keys.
+- **Audit Trail** — All credential create/update/delete/validation events logged with IP, user agent, timestamp. No secrets in logs.
+- **Session Security** — `httpOnly`, `secure` (prod), `sameSite: lax`, 30-day max age.
+- **Helmet CSP** — Strict Content-Security-Policy headers; no inline scripts from external origins.
 
 ---
 
 ## Development
 
-### Local Setup
 ```bash
-npm install
-npm run dev
+npm run dev       # Start server (3001) + client (5173) with hot reload
+npm run build     # TypeScript compile + Vite client build
+npm run migrate   # Run pending SQL migrations
+npm test          # Run test suite (if configured)
 ```
-
-Runs on `http://localhost:3000` with hot reload.
-
-### Database Migrations
-```bash
-npm run migrate:latest
-npm run migrate:rollback
-```
-
-### Testing
-```bash
-npm run test
-```
-
-### Contributing
-Pull requests welcome. For major changes, open an issue first.
-
----
-
-## Roadmap
-
-- [ ] Support for more providers (Cohere, Together AI, local models via Ollama)
-- [ ] Conversation search & tagging
-- [ ] Team sharing & collaboration
-- [ ] Model comparison (side-by-side responses)
-- [ ] Batch processing for conversations
-- [ ] Custom provider templates
 
 ---
 
 ## License
 
 MIT
-
----
-
-## Questions?
-
-Open an issue or reach out. Sage is built for flexibility—if something doesn't work the way you need it to, let's fix it.
-
-**Built with ❤️ by a seeker of better tools.**

@@ -10,10 +10,11 @@ export interface Usage {
 }
 
 export interface ChatChunk {
-  type: 'delta' | 'done' | 'error';
+  type: 'delta' | 'thinking' | 'done' | 'error';
   text?: string;
   usage?: Usage;
   error?: string;
+  truncated?: boolean;
 }
 
 export interface ChatRequest {

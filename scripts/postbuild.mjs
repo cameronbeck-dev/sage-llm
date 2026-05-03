@@ -28,3 +28,8 @@ if (!fs.existsSync(src)) {
 
 copyDir(src, dest);
 console.log(`Copied client/dist → server/dist/public`);
+
+const migrationsSrc = path.join(root, 'packages', 'server', 'src', 'db', 'migrations');
+const migrationsDest = path.join(root, 'packages', 'server', 'dist', 'db', 'migrations');
+copyDir(migrationsSrc, migrationsDest);
+console.log(`Copied server/src/db/migrations → server/dist/db/migrations`);
