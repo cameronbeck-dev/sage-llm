@@ -7,12 +7,13 @@ import { reviewMemory, getDoc, updateDoc, createWhisper } from './docs.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
   truncated?: boolean;
   whisperText?: string;
+  title?: string;
 }
 
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
@@ -36,7 +37,8 @@ async function getEnabledMemoryFiles(userId: string): Promise<string[]> {
 export async function* chatStream(
   userId: string,
   conversationId: string,
-  userMessage: string
+  userMessage: string,
+  previousId?: string
 ): AsyncIterable<SSEChunk> {
   const settings = await getUserSettings(userId);
 
@@ -46,9 +48,61 @@ export async function* chatStream(
     listMessages(conversationId, 50),
   ]);
 
+  if (history.length === 0) {
+    const { listConversations, updateConversation } = await import('./conversations.js');
+    const summariesDoc = await getDoc(userId, 'SUMMARIES.json');
+    let summarizedIds = new Set<string>();
+    if (summariesDoc?.content) {
+      try {
+        const data = JSON.parse(summariesDoc.content) as { entries: { conversationId: string }[] };
+        summarizedIds = new Set(data.entries.map(e => e.conversationId));
+      } catch {
+        // ignore malformed
+      }
+    }
+    const allConvos = await listConversations(userId);
+    const unsummarized = allConvos.filter(c => c.id !== conversationId && !summarizedIds.has(c.id));
+    for (const convo of unsummarized) {
+      const { summarizeConversation } = await import('./docs.js');
+      const summary = await summarizeConversation(userId, convo.id, convo.title);
+      if (summary) {
+        const newTitle = summary.slice(0, 80);
+        await updateConversation(userId, convo.id, { title: newTitle });
+      }
+    }
+  }
+
+  let summariesBlock: string | null = null;
+  if (history.length === 0) {
+    const summariesDoc2 = await getDoc(userId, 'SUMMARIES.json');
+    if (summariesDoc2?.content) {
+      try {
+        const parsed = JSON.parse(summariesDoc2.content) as {
+          entries: Array<{ conversationId: string; conversationTitle: string; timestamp: string; summary: string; lastMessageAt?: string }>;
+        };
+        if (parsed.entries.length > 0) {
+          const sorted = [...parsed.entries].sort((a, b) => {
+            const aTime = a.lastMessageAt ?? a.timestamp;
+            const bTime = b.lastMessageAt ?? b.timestamp;
+            return bTime.localeCompare(aTime);
+          });
+          const lines = sorted.map((e, i) => {
+            const when = e.lastMessageAt ?? e.timestamp;
+            const date = when.slice(0, 16).replace('T', ' ');
+            return `${i + 1}. [${date}] "${e.conversationTitle}": ${e.summary}`;
+          });
+          summariesBlock = `Past conversations (most recent first):\n${lines.join('\n')}`;
+        }
+      } catch {
+        // ignore malformed
+      }
+    }
+  }
+
   const systemParts: string[] = [];
   if (agentContent) systemParts.push(agentContent);
   if (memoryContents.length > 0) systemParts.push(memoryContents.join('\n\n'));
+  if (summariesBlock) systemParts.push(summariesBlock);
   systemParts.push('Memory policy: When you update MEMORY.md, do not mention it in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
   const system = systemParts.join('\n\n---\n\n');
 
@@ -154,6 +208,15 @@ export async function* chatStream(
 
   if (whisperText) {
     yield { type: 'whisper', whisperText };
+  }
+
+  // If this is the first message of a new conversation, derive title from user message
+  // and update the conversation. Also send title to client for sidebar update.
+  if (history.length === 0 && userMessage.trim()) {
+    const titleFromMsg = userMessage.trim().slice(0, 80);
+    const { updateConversation } = await import('./conversations.js');
+    await updateConversation(userId, conversationId, { title: titleFromMsg });
+    yield { type: 'title', title: titleFromMsg };
   }
 
   yield { type: 'done', usage: finalUsage };

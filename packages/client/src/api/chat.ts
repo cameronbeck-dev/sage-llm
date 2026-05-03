@@ -1,20 +1,22 @@
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
   truncated?: boolean;
   whisperText?: string;
+  title?: string;
 }
 
 export async function* streamChat(
   conversationId: string,
-  message: string
+  message: string,
+  previousId?: string
 ): AsyncIterable<SSEChunk> {
   const res = await fetch(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, previousId }),
   });
 
   if (!res.ok || !res.body) {

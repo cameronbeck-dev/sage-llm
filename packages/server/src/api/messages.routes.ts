@@ -9,10 +9,11 @@ export const messagesRouter = Router({ mergeParams: true });
 
 messagesRouter.post('/', requireAuth, async (req, res, next) => {
   const { id: conversationId } = req.params;
-  const { message, role, content } = req.body as {
+  const { message, role, content, previousId } = req.body as {
     message?: string;
     role?: string;
     content?: ContentBlock[];
+    previousId?: string;
   };
 
   // Support direct message creation (for /setup, whispers, etc.)
@@ -56,7 +57,7 @@ messagesRouter.post('/', requireAuth, async (req, res, next) => {
   res.flushHeaders();
 
   try {
-    for await (const chunk of chatStream(req.session!.userId!, conversationId, message.trim())) {
+    for await (const chunk of chatStream(req.session!.userId!, conversationId, message.trim(), previousId)) {
       res.write(`data: ${JSON.stringify(chunk)}\n\n`);
     }
   } catch (err) {

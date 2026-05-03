@@ -20,6 +20,7 @@ export interface SummaryEntry {
   conversationTitle: string;
   timestamp: string;
   summary: string;
+  lastMessageAt?: string;
 }
 
 export interface MemoryDelta {

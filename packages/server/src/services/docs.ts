@@ -5,6 +5,26 @@ import { getDecryptedCredential, CredentialNotFoundError } from './credentials.j
 import { listMessages, createMessage } from './messages.js';
 import type { MemoryDoc, SummaryEntry, MemoryDelta, ContentBlock } from '@sage/shared';
 
+function extractJson<T = unknown>(text: string): T | null {
+  if (!text) return null;
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '').trim();
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Fall through
+  }
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as T;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 const VALID_FILENAMES = ['AGENTS.md', 'MEMORY.md', 'SUMMARIES.json'] as const;
 type ValidFilename = typeof VALID_FILENAMES[number];
 
@@ -181,7 +201,11 @@ Output ONLY a single JSON object, no other text:
 
   try {
     const text = await chatSync(userId, prompt);
-    const delta = JSON.parse(text) as MemoryDelta;
+    const delta = extractJson<MemoryDelta>(text);
+    if (!delta) {
+      console.error('[reviewMemory] failed to parse LLM output:', text.slice(0, 500));
+      return { action: 'none', filename: 'MEMORY.md' };
+    }
     return delta;
   } catch (err) {
     console.error('[reviewMemory] failed:', err);
@@ -195,11 +219,27 @@ export async function summarizeConversation(
   userId: string,
   conversationId: string,
   conversationTitle: string
-): Promise<void> {
+): Promise<string | null> {
+  const existing = await getDoc(userId, 'SUMMARIES.json');
+  if (existing?.content) {
+    try {
+      const data = JSON.parse(existing.content) as { entries: SummaryEntry[] };
+      if (data.entries.some(e => e.conversationId === conversationId)) {
+        return null;
+      }
+    } catch {
+      // fall through and let appendSummary handle malformed JSON
+    }
+  }
+
   const [docs, messages] = await Promise.all([
     getDocs(userId),
     listMessages(conversationId, 1000),
   ]);
+
+  const lastMessageAt = messages.length > 0
+    ? messages[messages.length - 1].createdAt
+    : undefined;
 
   const memoryDoc = docs.find(d => d.filename === 'MEMORY.md');
 
@@ -233,13 +273,17 @@ Output a JSON object:
 
   try {
     const text = await chatSync(userId, prompt);
-    const result = JSON.parse(text) as { summary: string };
-
-    if (result.summary) {
-      await appendSummary(userId, conversationId, conversationTitle, result.summary);
+    const result = extractJson<{ summary: string }>(text);
+    if (!result || !result.summary) {
+      console.error('[memory] summarizeConversation parse failed for', conversationId, '— LLM output:', text.slice(0, 500));
+      return null;
     }
+
+    await appendSummary(userId, conversationId, conversationTitle, result.summary, lastMessageAt);
+    return result.summary;
   } catch (err) {
-    console.error('[memory] summarizeConversation failed', err);
+    console.error('[memory] summarizeConversation failed for', conversationId, ':', err);
+    return null;
   }
 }
 
@@ -249,7 +293,8 @@ export async function appendSummary(
   userId: string,
   conversationId: string,
   conversationTitle: string,
-  summary: string
+  summary: string,
+  lastMessageAt?: string
 ): Promise<void> {
   const pool = getPool();
   const { rows } = await pool.query(
@@ -272,6 +317,7 @@ export async function appendSummary(
     conversationTitle,
     timestamp: new Date().toISOString(),
     summary,
+    lastMessageAt,
   });
 
   await updateDoc(userId, 'SUMMARIES.json', JSON.stringify(data, null, 2));
@@ -324,8 +370,10 @@ If nothing needs migrating:
 
     try {
       const text = await chatSync(userId, prompt);
-      const result = JSON.parse(text) as { action: string; content?: string; summary?: string };
-      if (result.action === 'update' && result.content) {
+      const result = extractJson<{ action: string; content?: string; summary?: string }>(text);
+      if (!result) {
+        console.error('[memory] trimAndMigrateSummaries parse failed — LLM output:', text.slice(0, 500));
+      } else if (result.action === 'update' && result.content) {
         await updateDoc(userId, 'MEMORY.md', result.content);
         if (result.summary) {
           const conversationId = toRemove[0]?.conversationId ?? 'unknown';

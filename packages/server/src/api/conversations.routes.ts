@@ -8,7 +8,6 @@ import {
   deleteConversation,
 } from '../services/conversations.js';
 import { listMessages } from '../services/messages.js';
-import { summarizeConversation } from '../services/docs.js';
 
 export const conversationsRouter = Router();
 
@@ -23,19 +22,8 @@ conversationsRouter.get('/', requireAuth, async (req, res, next) => {
 
 conversationsRouter.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { title, previousId } = req.body as { title?: string; previousId?: string };
-
-    // Summarize previous conversation if provided
-    if (previousId) {
-      const prevConvo = await getConversation(req.session!.userId!, previousId);
-      if (prevConvo) {
-        summarizeConversation(req.session!.userId!, previousId, prevConvo.title).catch((err) => {
-          console.error('[conversations] summary failed', err);
-        });
-      }
-    }
-
-    const id = await createConversation(req.session!.userId!, title);
+    const { title } = req.body as { title?: string };
+    const id = await createConversation(req.session!.userId!, title ?? 'New conversation');
     const convo = await getConversation(req.session!.userId!, id);
     res.status(201).json(convo);
   } catch (err) {

@@ -126,11 +126,25 @@ export default function Chat() {
       }, 1000);
 
       try {
-        for await (const chunk of streamChat(conversationId, text)) {
+        for await (const chunk of streamChat(conversationId, text, useConversationStore.getState().previousConversationId ?? undefined)) {
           if (chunk.type === 'text' && chunk.delta) {
             useConversationStore.getState().updateThinkingMessage(chunk.delta);
           } else if (chunk.type === 'thinking' && chunk.delta) {
             appendThinkingDelta(chunk.delta);
+          } else if (chunk.type === 'whisper') {
+            // Memory review completed and whisper was created — refetch to show it
+            if (conversationId) {
+              const msgRes = await fetch(`/api/conversations/${conversationId}`);
+              if (msgRes.ok) {
+                const data = await msgRes.json() as Conversation & { messages: Message[] };
+                useConversationStore.setState({ activeMessages: data.messages });
+              }
+            }
+          } else if (chunk.type === 'title') {
+            // First message of new conversation — update conversation title in sidebar
+            if (conversationId && chunk.title) {
+              useConversationStore.getState().updateConversationTitle(conversationId, chunk.title);
+            }
           } else if (chunk.type === 'done' || chunk.type === 'error') {
             if (thinkingTimerRef.current) {
               clearInterval(thinkingTimerRef.current);

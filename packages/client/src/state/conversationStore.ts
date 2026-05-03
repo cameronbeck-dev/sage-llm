@@ -9,6 +9,7 @@ interface ConversationState {
   streamingText: string;
   isStreaming: boolean;
   thinkingMessageId: string | null;
+  previousConversationId: string | null;
   sageState: SageState;
   sageMessage: string;
   loadConversations: () => Promise<void>;
@@ -23,6 +24,7 @@ interface ConversationState {
   deleteConversation: (id: string) => Promise<void>;
   setSageState: (state: SageState) => void;
   setSageMessage: (message: string) => void;
+  updateConversationTitle: (id: string, title: string) => void;
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
@@ -32,6 +34,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   streamingText: '',
   isStreaming: false,
   thinkingMessageId: null,
+  previousConversationId: null,
   sageState: 'idle',
   sageMessage: 'Ready when you are.',
 
@@ -43,7 +46,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async createConversation(title) {
-    const prevId = this.activeConversationId;
+    const state = get();
+    const prevId = state.activeConversationId ?? state.previousConversationId;
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -51,13 +55,20 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
     if (!res.ok) throw new Error('Failed to create conversation');
     const convo = (await res.json()) as Conversation;
-    set((s) => ({ conversations: [convo, ...s.conversations] }));
+    set((s) => ({ conversations: [convo, ...s.conversations], previousConversationId: prevId }));
     return convo.id;
   },
 
   async setActive(id) {
     if (id === null) {
-      set({ activeConversationId: null, activeMessages: [], streamingText: '', isStreaming: false, thinkingMessageId: null });
+      set((s) => ({
+        activeConversationId: null,
+        previousConversationId: s.activeConversationId ?? s.previousConversationId,
+        activeMessages: [],
+        streamingText: '',
+        isStreaming: false,
+        thinkingMessageId: null,
+      }));
       return;
     }
     set({ activeConversationId: id, activeMessages: [], streamingText: '', isStreaming: false, thinkingMessageId: null });
@@ -149,5 +160,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   setSageMessage(message: string) {
     set({ sageMessage: message });
+  },
+
+  updateConversationTitle(id: string, title: string) {
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, title } : c
+      ),
+    }));
   },
 }));
