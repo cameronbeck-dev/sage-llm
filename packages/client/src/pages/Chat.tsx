@@ -89,7 +89,7 @@ export default function Chat() {
 
       if (conversationId === null) {
         try {
-          const newId = await createConversation();
+          const newId = await useConversationStore.getState().createConversation();
           await setActive(newId);
           conversationId = newId;
         } catch (err) {
@@ -147,7 +147,7 @@ export default function Chat() {
                 const msgRes = await fetch(`/api/conversations/${conversationId}`);
                 if (msgRes.ok) {
                   const data = await msgRes.json() as Conversation & { messages: Message[] };
-                  set((s) => ({ activeMessages: data.messages }));
+                  useConversationStore.setState({ activeMessages: data.messages });
                 }
               }
             }

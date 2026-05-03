@@ -1,9 +1,10 @@
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
   truncated?: boolean;
+  whisperText?: string;
 }
 
 export async function* streamChat(

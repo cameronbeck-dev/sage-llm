@@ -7,11 +7,12 @@ import { reviewMemory, getDoc, updateDoc, createWhisper } from './docs.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
   truncated?: boolean;
+  whisperText?: string;
 }
 
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
@@ -133,10 +134,9 @@ export async function* chatStream(
     costCents
   );
 
-  yield { type: 'done', usage: finalUsage };
-
-  // Memory review pass — fire-and-forget after assistant message is saved
-  reviewMemory(userId, conversationId)
+  // Memory review pass — must complete before 'done' is sent to client
+  let whisperText: string | undefined;
+  await reviewMemory(userId, conversationId)
     .then(async (delta) => {
       if (delta.action === 'none' || !delta.content || !delta.summary) return;
       let newContent = delta.content;
@@ -146,8 +146,15 @@ export async function* chatStream(
       }
       await updateDoc(userId, 'MEMORY.md', newContent);
       await createWhisper(conversationId, `Memory updated: ${delta.summary}`);
+      whisperText = `Memory updated: ${delta.summary}`;
     })
     .catch((err) => {
       console.error('[memory] review pass failed', err);
     });
+
+  if (whisperText) {
+    yield { type: 'whisper', whisperText };
+  }
+
+  yield { type: 'done', usage: finalUsage };
 }
