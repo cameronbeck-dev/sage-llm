@@ -242,29 +242,31 @@ export default function Chat() {
 
       <main className="chat-main">
         <div className="chat-transcript" ref={transcriptRef}>
-          {activeConversationId && (() => {
-            const conversationTotalUsd = activeMessages.reduce((s, m) => s + (m.costUsd ?? 0), 0);
-            return conversationTotalUsd > 0 ? (
-              <div className="chat-cost-banner">Session cost: ${conversationTotalUsd.toFixed(4)}</div>
-            ) : null;
+          {(() => {
+            let running = 0;
+            const enriched = activeMessages.map((m) => {
+              if (m.role === 'assistant' && typeof m.costUsd === 'number') running += m.costUsd;
+              return { msg: m, sessionRunningUsd: running };
+            });
+            return enriched.map(({ msg, sessionRunningUsd }) => {
+              const text = msg.content
+                .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+                .map((b) => b.text)
+                .join('');
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  role={msg.role as 'user' | 'assistant' | 'whisper'}
+                  content={text}
+                  isStreaming={msg.id === thinkingMessageId && isStreaming}
+                  isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}
+                  thinking={msg.thinking}
+                  costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
+                  sessionRunningUsd={msg.role === 'assistant' && msg.costUsd != null ? sessionRunningUsd : undefined}
+                />
+              );
+            });
           })()}
-          {activeMessages.map((msg) => {
-            const text = msg.content
-              .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-              .map((b) => b.text)
-              .join('');
-            return (
-              <MessageBubble
-                key={msg.id}
-                role={msg.role as 'user' | 'assistant' | 'whisper'}
-                content={text}
-                isStreaming={msg.id === thinkingMessageId && isStreaming}
-                isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}
-                thinking={msg.thinking}
-                costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
-              />
-            );
-          })}
         </div>
         <div className="chat-input-bar pixel-border">
           <textarea

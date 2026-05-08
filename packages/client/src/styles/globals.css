@@ -929,3 +929,14 @@ details[open] > .message-bubble__thinking-summary::before {
   border-left: 2px solid var(--border-dim);
   padding-left: 8px;
 }
+
+/* Cost footer — quiet, whisper-like, sits under assistant bubbles */
+.message-bubble__cost {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-dim);
+  align-self: flex-start;
+}

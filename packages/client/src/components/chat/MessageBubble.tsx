@@ -8,9 +8,10 @@ interface MessageBubbleProps {
   isError?: boolean;
   thinking?: string;
   costUsd?: number;
+  sessionRunningUsd?: number;
 }
 
-export default function MessageBubble({ role, content, isStreaming, isError, thinking, costUsd }: MessageBubbleProps) {
+export default function MessageBubble({ role, content, isStreaming, isError, thinking, costUsd, sessionRunningUsd }: MessageBubbleProps) {
   if (role === 'whisper') {
     return (
       <div className="message-bubble message-bubble--whisper">
@@ -46,8 +47,13 @@ export default function MessageBubble({ role, content, isStreaming, isError, thi
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         {isStreaming && !isError && <span className="message-bubble__cursor" aria-hidden="true" />}
       </div>
-      {role === 'assistant' && costUsd != null && costUsd > 0 && (
-        <div className="message-bubble__meta">${costUsd.toFixed(4)}</div>
+      {role === 'assistant' && costUsd != null && (
+        <div className="message-bubble__cost">
+          this reply cost ${costUsd.toFixed(4)}
+          {sessionRunningUsd != null && (
+            <> · session running ${sessionRunningUsd.toFixed(4)}</>
+          )}
+        </div>
       )}
     </div>
   );

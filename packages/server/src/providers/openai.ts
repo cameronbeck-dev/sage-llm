@@ -144,6 +144,6 @@ export const openaiProvider: LLMProvider = {
     if (!pricing) return 0;
     const inputCost = (usage.inputTokens / 1000) * pricing.input;
     const outputCost = (usage.outputTokens / 1000) * pricing.output;
-    return Math.round((inputCost + outputCost) * 100);
+    return inputCost + outputCost;
   },
 };

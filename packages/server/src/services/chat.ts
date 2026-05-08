@@ -155,11 +155,11 @@ export async function* chatStream(
         if (chunk.truncated) {
           const truncationNotice = '\n\n[Output truncated due to token limit — response was cut off]';
           fullText += truncationNotice;
-          const truncatedCost = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
+          const truncatedCostUsd = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
           await createMessage(conversationId, 'assistant', [
             { type: 'text', text: fullText },
-          ], settings.activeProvider, model, finalUsage, truncatedCost);
-          yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCost != null ? truncatedCost / 100 : undefined };
+          ], settings.activeProvider, model, finalUsage, truncatedCostUsd);
+          yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCostUsd };
           yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
           return;
         }
@@ -176,9 +176,9 @@ export async function* chatStream(
     return;
   }
 
-  let costCents: number | undefined;
+  let costUsd: number | undefined;
   if (finalUsage && provider.estimateCost) {
-    costCents = provider.estimateCost(model, finalUsage);
+    costUsd = provider.estimateCost(model, finalUsage);
   }
 
   await createMessage(
@@ -188,7 +188,7 @@ export async function* chatStream(
     settings.activeProvider,
     model,
     finalUsage,
-    costCents
+    costUsd
   );
 
   // Budget check — warn once per calendar month when budget is crossed
@@ -225,7 +225,7 @@ export async function* chatStream(
     yield { type: 'title', title: titleFromMsg };
   }
 
-  yield { type: 'done', usage: finalUsage, costUsd: costCents != null ? costCents / 100 : undefined };
+  yield { type: 'done', usage: finalUsage, costUsd: costUsd };
 }
 
 async function* maybeYieldBudgetWhisper(
