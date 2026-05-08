@@ -17,7 +17,12 @@ settingsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     const settings = await getUserSettings(req.session!.userId!);
     const creds = await listCredentials(req.session!.userId!);
-    res.json({ ...settings, credentials: creds });
+    const { monthlyBudgetCents, budgetWarnedPeriod: _budgetWarnedPeriod, ...rest } = settings;
+    res.json({
+      ...rest,
+      monthlyBudgetUsd: monthlyBudgetCents != null ? monthlyBudgetCents / 100 : null,
+      credentials: creds,
+    });
   } catch (err) {
     next(err);
   }
@@ -33,7 +38,29 @@ settingsRouter.put('/', requireAuth, mutationLimiter, async (req, res, next) => 
     };
     await updateUserSettings(req.session!.userId!, { activeProvider, activeModel, theme });
     const settings = await getUserSettings(req.session!.userId!);
-    res.json(settings);
+    const { monthlyBudgetCents, budgetWarnedPeriod: _budgetWarnedPeriod, ...rest } = settings;
+    res.json({
+      ...rest,
+      monthlyBudgetUsd: monthlyBudgetCents != null ? monthlyBudgetCents / 100 : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /settings/budget — set monthly budget
+settingsRouter.put('/budget', requireAuth, mutationLimiter, async (req, res, next) => {
+  try {
+    const { monthlyBudgetUsd } = req.body as { monthlyBudgetUsd?: number | null };
+    if (monthlyBudgetUsd !== null && monthlyBudgetUsd !== undefined) {
+      if (typeof monthlyBudgetUsd !== 'number' || !isFinite(monthlyBudgetUsd) || monthlyBudgetUsd <= 0) {
+        res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'monthlyBudgetUsd must be null or a finite number > 0' } });
+        return;
+      }
+    }
+    const monthlyBudgetCents = monthlyBudgetUsd != null ? Math.round(monthlyBudgetUsd * 100) : null;
+    await updateUserSettings(req.session!.userId!, { monthlyBudgetCents });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

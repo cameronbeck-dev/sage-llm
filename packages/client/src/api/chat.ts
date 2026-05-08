@@ -6,6 +6,7 @@ export interface SSEChunk {
   truncated?: boolean;
   whisperText?: string;
   title?: string;
+  costUsd?: number;
 }
 
 export async function* streamChat(

@@ -424,6 +424,64 @@ function CredentialSection({ providerId, displayName, hasKey, onSave, onDelete }
   );
 }
 
+function BudgetSection({ monthlyBudgetUsd, onSave }: { monthlyBudgetUsd: number | null; onSave: (v: number | null) => Promise<void> }) {
+  const [inputValue, setInputValue] = useState(monthlyBudgetUsd != null ? String(monthlyBudgetUsd) : '');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setStatus(null);
+    try {
+      const parsed = inputValue.trim() === '' ? null : parseFloat(inputValue.trim());
+      if (parsed !== null && (isNaN(parsed) || parsed <= 0)) {
+        setStatus({ type: 'error', message: 'Enter a positive number or leave blank to remove the budget.' });
+        return;
+      }
+      await onSave(parsed);
+      setStatus({ type: 'success', message: 'Budget saved.' });
+      setTimeout(() => setStatus(null), 2500);
+    } catch (err) {
+      setStatus({ type: 'error', message: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="settings-section pixel-border">
+      <h2 className="settings-section__title">Monthly Budget</h2>
+      <p className="settings-info">
+        Set a soft monthly spending cap in USD. You&apos;ll receive a one-time in-chat warning when you cross it.
+      </p>
+      <div className="settings-field">
+        <label className="settings-label" htmlFor="budget-input">Budget (USD, blank to disable)</label>
+        <input
+          id="budget-input"
+          type="number"
+          min="0.01"
+          step="0.01"
+          className="api-key-input"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder="e.g. 10.00"
+          style={{ width: 140 }}
+        />
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <button className="btn btn--primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+      {status && (
+        <p className={status.type === 'success' ? 'api-key-success' : 'api-key-error'} style={{ marginTop: 8 }}>
+          {status.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     provider,
@@ -436,6 +494,8 @@ export default function Settings() {
     updateModel,
     saveCredential,
     deleteCredential,
+    monthlyBudgetUsd,
+    saveBudget,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -570,6 +630,8 @@ export default function Settings() {
       <CollapsibleSection title="Conversation Summaries (SUMMARIES.json)">
         <SummariesContent />
       </CollapsibleSection>
+
+      <BudgetSection monthlyBudgetUsd={monthlyBudgetUsd} onSave={saveBudget} />
 
       <DangerZone />
     </div>

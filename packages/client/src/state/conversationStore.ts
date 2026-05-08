@@ -12,6 +12,7 @@ interface ConversationState {
   previousConversationId: string | null;
   sageState: SageState;
   sageMessage: string;
+  lastTurnCostUsd: number | null;
   loadConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<string>;
   setActive: (id: string | null) => Promise<void>;
@@ -25,6 +26,7 @@ interface ConversationState {
   setSageState: (state: SageState) => void;
   setSageMessage: (message: string) => void;
   updateConversationTitle: (id: string, title: string) => void;
+  setLastTurnCost: (value: number | null) => void;
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
@@ -37,6 +39,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   previousConversationId: null,
   sageState: 'idle',
   sageMessage: 'Ready when you are.',
+  lastTurnCostUsd: null,
 
   async loadConversations() {
     const res = await fetch('/api/conversations');
@@ -168,5 +171,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         c.id === id ? { ...c, title } : c
       ),
     }));
+  },
+
+  setLastTurnCost(value: number | null) {
+    set({ lastTurnCostUsd: value });
   },
 }));

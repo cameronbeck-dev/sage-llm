@@ -5,6 +5,7 @@ import Login from './pages/Login.js';
 import Chat from './pages/Chat.js';
 import Settings from './pages/Settings.js';
 import Stub from './pages/Stub.js';
+import Usage from './pages/Usage.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -51,6 +52,14 @@ export default function AppRouter() {
           element={
             <RequireAuth>
               <Settings />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/usage"
+          element={
+            <RequireAuth>
+              <Usage />
             </RequireAuth>
           }
         />

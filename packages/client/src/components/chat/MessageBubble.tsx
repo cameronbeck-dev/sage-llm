@@ -7,9 +7,10 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   isError?: boolean;
   thinking?: string;
+  costUsd?: number;
 }
 
-export default function MessageBubble({ role, content, isStreaming, isError, thinking }: MessageBubbleProps) {
+export default function MessageBubble({ role, content, isStreaming, isError, thinking, costUsd }: MessageBubbleProps) {
   if (role === 'whisper') {
     return (
       <div className="message-bubble message-bubble--whisper">
@@ -45,6 +46,9 @@ export default function MessageBubble({ role, content, isStreaming, isError, thi
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         {isStreaming && !isError && <span className="message-bubble__cursor" aria-hidden="true" />}
       </div>
+      {role === 'assistant' && costUsd != null && costUsd > 0 && (
+        <div className="message-bubble__meta">${costUsd.toFixed(4)}</div>
+      )}
     </div>
   );
 }

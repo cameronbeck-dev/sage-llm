@@ -1,9 +1,10 @@
 import { getPool } from '../db/pool.js';
 import { getProvider } from '../providers/registry.js';
 import { listMessages, createMessage } from './messages.js';
-import { getUserSettings } from './settings.js';
+import { getUserSettings, updateUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
 import { reviewMemory, getDoc, updateDoc, createWhisper } from './docs.js';
+import { getCurrentPeriodSpendCents } from './usage.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
@@ -14,6 +15,7 @@ export interface SSEChunk {
   truncated?: boolean;
   whisperText?: string;
   title?: string;
+  costUsd?: number;
 }
 
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
@@ -154,10 +156,11 @@ export async function* chatStream(
           const truncationNotice = '\n\n[Output truncated due to token limit — response was cut off]';
           fullText += truncationNotice;
           const truncatedCost = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
-          yield { type: 'done', usage: finalUsage, truncated: true };
           await createMessage(conversationId, 'assistant', [
             { type: 'text', text: fullText },
           ], settings.activeProvider, model, finalUsage, truncatedCost);
+          yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCost != null ? truncatedCost / 100 : undefined };
+          yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
           return;
         }
       } else if (chunk.type === 'error') {
@@ -187,6 +190,9 @@ export async function* chatStream(
     finalUsage,
     costCents
   );
+
+  // Budget check — warn once per calendar month when budget is crossed
+  yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
 
   // Memory review pass — must complete before 'done' is sent to client
   let whisperText: string | undefined;
@@ -219,5 +225,21 @@ export async function* chatStream(
     yield { type: 'title', title: titleFromMsg };
   }
 
-  yield { type: 'done', usage: finalUsage };
+  yield { type: 'done', usage: finalUsage, costUsd: costCents != null ? costCents / 100 : undefined };
+}
+
+async function* maybeYieldBudgetWhisper(
+  userId: string,
+  conversationId: string,
+  settings: Awaited<ReturnType<typeof getUserSettings>>
+): AsyncIterable<SSEChunk> {
+  if (settings.monthlyBudgetCents == null || settings.monthlyBudgetCents <= 0) return;
+  const periodSpendCents = await getCurrentPeriodSpendCents(userId);
+  const currentPeriod = new Date().toISOString().slice(0, 7);
+  if (periodSpendCents >= settings.monthlyBudgetCents && settings.budgetWarnedPeriod !== currentPeriod) {
+    const whisperText = `You've reached your $${(settings.monthlyBudgetCents / 100).toFixed(2)} monthly budget for ${currentPeriod}.`;
+    await createWhisper(conversationId, whisperText);
+    await updateUserSettings(userId, { budgetWarnedPeriod: currentPeriod });
+    yield { type: 'whisper', whisperText };
+  }
 }

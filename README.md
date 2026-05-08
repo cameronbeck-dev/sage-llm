@@ -16,6 +16,8 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Persistent Memory** — Sage learns about you over time: AGENTS.md (editable instructions), MEMORY.md (learned facts), SUMMARIES.json (conversation history, capped at 20)
 - **Whisper Messages** — Memory updates appear inline in chat as subtle ambient notes
 - **Audit Logging** — All credential operations logged immutably
+- **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
+- **Soft Monthly Budget** — Optional cap with a single in-chat whisper warning when crossed
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---
@@ -180,6 +182,9 @@ All routes require authentication unless noted.
 | `DELETE` | `/api/settings/credentials/:provider` | Remove stored key |
 | `GET` | `/api/docs/:filename` | Get a memory doc (AGENTS.md, MEMORY.md, SUMMARIES.json) |
 | `PUT` | `/api/docs/AGENTS.md` | Update agent instructions (user-editable) |
+| `GET` | `/api/usage` | Get usage report for the current or specified period |
+| `GET` | `/api/usage/export.csv` | Download daily spend as CSV |
+| `PUT` | `/api/settings/budget` | Set monthly budget cap (USD) |
 | `POST` | `/api/account/export` | Download a ZIP of all user data (GDPR export) |
 | `DELETE` | `/api/account` | Permanently delete account and all associated data |
 | `GET` | `/api/health` | Health check (unauthenticated) |
@@ -193,7 +198,7 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 **Key tables:**
 
 - `users` — GitHub OAuth identity
-- `user_settings` — active provider, model, theme per user
+- `user_settings` — active provider, model, theme, `monthly_budget_cents`, `budget_warned_period` per user
 - `conversations` — archived flag, timestamps
 - `messages` — role, content (JSON), provider/model, token usage, cost
 - `credentials` — encrypted API key envelopes per user per provider

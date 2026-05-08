@@ -20,6 +20,7 @@ interface SettingsState {
   credentials: Record<string, CredentialInfo>;
   isLoading: boolean;
   pendingChanges: { provider?: string; model?: string } | null;
+  monthlyBudgetUsd: number | null;
   loadSettings: () => Promise<void>;
   loadProviders: () => Promise<void>;
   updateProvider: (provider: string) => void;
@@ -28,6 +29,7 @@ interface SettingsState {
   saveCredential: (provider: string, apiKey: string) => Promise<void>;
   deleteCredential: (provider: string) => Promise<void>;
   loadCredentialStatus: (provider: string) => Promise<CredentialInfo>;
+  saveBudget: (monthlyBudgetUsd: number | null) => Promise<void>;
 }
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -48,6 +50,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   credentials: {},
   isLoading: false,
   pendingChanges: null,
+  monthlyBudgetUsd: null,
 
   async loadSettings() {
     set({ isLoading: true });
@@ -58,11 +61,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         activeProvider: string;
         activeModel: string;
         credentials?: Record<string, CredentialInfo>;
+        monthlyBudgetUsd?: number | null;
       };
       set({
         provider: data.activeProvider,
         model: data.activeModel,
         credentials: data.credentials ?? {},
+        monthlyBudgetUsd: data.monthlyBudgetUsd ?? null,
         isLoading: false,
       });
     } catch {
@@ -147,5 +152,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return { hasKey: false, updatedAt: null };
     }
     return (await res.json()) as CredentialInfo;
+  },
+
+  async saveBudget(monthlyBudgetUsd) {
+    const res = await fetch('/api/settings/budget', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthlyBudgetUsd }),
+    });
+    if (!res.ok) {
+      const err = (await res.json()) as { error?: { message?: string } };
+      throw new Error(err.error?.message ?? 'Failed to save budget');
+    }
+    set({ monthlyBudgetUsd });
   },
 }));

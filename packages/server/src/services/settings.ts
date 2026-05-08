@@ -5,6 +5,8 @@ export interface UserSettings {
   activeProvider: string;
   activeModel: string;
   theme: string;
+  monthlyBudgetCents: number | null;
+  budgetWarnedPeriod: string | null;
 }
 
 export async function getUserSettings(userId: string): Promise<UserSettings> {
@@ -15,7 +17,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
   );
   if (rows.length === 0) {
     await pool.query('INSERT INTO user_settings (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
-    return { userId, activeProvider: 'openai', activeModel: 'gpt-4o-mini', theme: 'forest' };
+    return { userId, activeProvider: 'openai', activeModel: 'gpt-4o-mini', theme: 'forest', monthlyBudgetCents: null, budgetWarnedPeriod: null };
   }
   const row = rows[0];
   return {
@@ -23,12 +25,14 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     activeProvider: row.active_provider as string,
     activeModel: row.active_model as string,
     theme: row.theme as string,
+    monthlyBudgetCents: row.monthly_budget_cents != null ? Number(row.monthly_budget_cents) : null,
+    budgetWarnedPeriod: row.budget_warned_period != null ? (row.budget_warned_period as string) : null,
   };
 }
 
 export async function updateUserSettings(
   userId: string,
-  updates: { activeProvider?: string; activeModel?: string; theme?: string }
+  updates: { activeProvider?: string; activeModel?: string; theme?: string; monthlyBudgetCents?: number | null; budgetWarnedPeriod?: string | null }
 ): Promise<void> {
   const pool = getPool();
   const fields: string[] = [];
@@ -46,6 +50,14 @@ export async function updateUserSettings(
   if (updates.theme !== undefined) {
     fields.push(`theme = $${idx++}`);
     values.push(updates.theme);
+  }
+  if (updates.monthlyBudgetCents !== undefined) {
+    fields.push(`monthly_budget_cents = $${idx++}`);
+    values.push(updates.monthlyBudgetCents);
+  }
+  if (updates.budgetWarnedPeriod !== undefined) {
+    fields.push(`budget_warned_period = $${idx++}`);
+    values.push(updates.budgetWarnedPeriod);
   }
   if (fields.length === 0) return;
 

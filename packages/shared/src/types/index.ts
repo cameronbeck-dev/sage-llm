@@ -3,6 +3,7 @@ export * from './conversation.js';
 export * from './provider.js';
 export * from './agent.js';
 export * from './user.js';
+export * from './usage.js';
 
 // Memory system types
 export interface MemoryDoc {

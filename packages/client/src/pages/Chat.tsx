@@ -27,6 +27,7 @@ export default function Chat() {
     addMessage,
     deleteConversation,
     appendThinkingDelta,
+    setLastTurnCost,
   } = useConversationStore();
 
   const { sageState, sageMessage, startStreaming, stopStreaming, onStreamError } = useSageState();
@@ -154,6 +155,7 @@ export default function Chat() {
               onStreamError();
               setStreamingError(`Error: ${chunk.error}`);
             } else {
+              setLastTurnCost(chunk.costUsd ?? null);
               stopStreaming();
               finalizeStreaming();
               // Refetch messages to pick up any whispers created by memory review
@@ -228,6 +230,7 @@ export default function Chat() {
                 />
               )}
               <span>{user.login}</span>
+              <Link to="/usage" className="btn btn--sm">Usage</Link>
               <Link to="/settings" className="btn btn--sm">Settings</Link>
               <button className="btn btn--sm" onClick={() => logout()}>
                 Logout
@@ -239,6 +242,12 @@ export default function Chat() {
 
       <main className="chat-main">
         <div className="chat-transcript" ref={transcriptRef}>
+          {activeConversationId && (() => {
+            const conversationTotalUsd = activeMessages.reduce((s, m) => s + (m.costUsd ?? 0), 0);
+            return conversationTotalUsd > 0 ? (
+              <div className="chat-cost-banner">Session cost: ${conversationTotalUsd.toFixed(4)}</div>
+            ) : null;
+          })()}
           {activeMessages.map((msg) => {
             const text = msg.content
               .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
@@ -252,6 +261,7 @@ export default function Chat() {
                 isStreaming={msg.id === thinkingMessageId && isStreaming}
                 isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}
                 thinking={msg.thinking}
+                costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
               />
             );
           })}
