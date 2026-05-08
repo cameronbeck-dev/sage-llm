@@ -22,3 +22,6 @@ packages/client/dist/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Local object storage
+var/

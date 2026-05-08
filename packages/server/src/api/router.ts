@@ -5,6 +5,7 @@ import { messagesRouter } from './messages.routes.js';
 import { settingsRouter } from './settings.routes.js';
 import { providersRouter } from './providers.routes.js';
 import { docsRouter } from './docs.routes.js';
+import { accountRouter } from './account.routes.js';
 
 export const apiRouter = Router();
 
@@ -14,6 +15,7 @@ apiRouter.use('/conversations/:id/messages', messagesRouter);
 apiRouter.use('/settings', settingsRouter);
 apiRouter.use('/providers', providersRouter);
 apiRouter.use('/docs', docsRouter);
+apiRouter.use('/account', accountRouter);
 
 apiRouter.get('/health', (_req, res) => {
   res.json({ status: 'ok', name: 'sage' });

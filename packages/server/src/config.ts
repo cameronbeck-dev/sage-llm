@@ -15,6 +15,12 @@ const envSchema = z.object({
   CLIENT_URL: z.string().default(''),
   DEFAULT_PROVIDER: z.string().default('openai'),
   DEFAULT_MODEL: z.string().default('gpt-4o-mini'),
+  SENTRY_DSN: z.string().optional(),
+  OBJECT_STORE: z.enum(['local', 'r2']).default('local'),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
 });
 
 // Validate SAGE_ENC_KEY is present when running in production

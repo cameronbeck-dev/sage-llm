@@ -3,10 +3,11 @@ import { githubAuthRouter } from '../auth/github.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getPool } from '../db/pool.js';
 import { getUserSettings } from '../services/settings.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 
 export const authRouter = Router();
 
-authRouter.use('/auth', githubAuthRouter);
+authRouter.use('/auth', authLimiter, githubAuthRouter);
 
 authRouter.post('/auth/logout', (req, res) => {
   req.session = null as unknown as typeof req.session;

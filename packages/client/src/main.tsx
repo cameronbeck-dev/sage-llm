@@ -1,6 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.js';
+import { initSentry } from './sentry.js';
+
+initSentry();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found');

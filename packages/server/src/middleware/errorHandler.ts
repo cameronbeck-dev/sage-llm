@@ -1,9 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AuthError, RateLimitError, ProviderError } from '../providers/errors.js';
+import { logger } from '../logger.js';
 
 export function errorHandler(
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void {
@@ -24,7 +25,7 @@ export function errorHandler(
     return;
   }
 
-  console.error('[error]', err);
+  logger.error({ err, requestId: req.id }, 'unhandled error');
   const message = err instanceof Error ? err.message : 'Internal server error';
   res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
 }

@@ -8,6 +8,7 @@ import {
   CredentialValidationError,
   CredentialNotFoundError,
 } from '../services/credentials.js';
+import { mutationLimiter } from '../middleware/rateLimit.js';
 
 export const settingsRouter = Router();
 
@@ -23,7 +24,7 @@ settingsRouter.get('/', requireAuth, async (req, res, next) => {
 });
 
 // PUT /settings — update user settings (provider, model, theme)
-settingsRouter.put('/', requireAuth, async (req, res, next) => {
+settingsRouter.put('/', requireAuth, mutationLimiter, async (req, res, next) => {
   try {
     const { activeProvider, activeModel, theme } = req.body as {
       activeProvider?: string;
@@ -39,7 +40,7 @@ settingsRouter.put('/', requireAuth, async (req, res, next) => {
 });
 
 // PUT /settings/credentials/:provider — store or update encrypted API key
-settingsRouter.put('/credentials/:provider', requireAuth, async (req, res, next) => {
+settingsRouter.put('/credentials/:provider', requireAuth, mutationLimiter, async (req, res, next) => {
   try {
     const { provider } = req.params;
     const { apiKey } = req.body as { apiKey?: string };
@@ -78,7 +79,7 @@ settingsRouter.get('/credentials/:provider', requireAuth, async (req, res, next)
 });
 
 // DELETE /settings/credentials/:provider — remove stored credential
-settingsRouter.delete('/credentials/:provider', requireAuth, async (req, res, next) => {
+settingsRouter.delete('/credentials/:provider', requireAuth, mutationLimiter, async (req, res, next) => {
   try {
     const { provider } = req.params;
     const ip = req.ip ?? req.socket.remoteAddress;

@@ -74,6 +74,18 @@ CLIENT_URL=http://localhost:5173
 
 DEFAULT_PROVIDER=openai
 DEFAULT_MODEL=gpt-4o-mini
+
+# Optional — leave empty to disable Sentry error reporting
+SENTRY_DSN=
+VITE_SENTRY_DSN=
+
+# Object storage: 'local' (dev) or 'r2' (Cloudflare R2)
+OBJECT_STORE=local
+# Required when OBJECT_STORE=r2:
+# R2_ACCOUNT_ID=
+# R2_ACCESS_KEY_ID=
+# R2_SECRET_ACCESS_KEY=
+# R2_BUCKET=
 ```
 
 ### 3. Create GitHub OAuth App
@@ -99,6 +111,7 @@ npm run dev
 
 - **Server**: `http://localhost:3001`
 - **Client**: `http://localhost:5173` (Vite dev server with HMR)
+- **Worker**: job-queue worker process (optional — restarts independently; exits without killing server/client)
 
 ### 6. Add Your API Key
 
@@ -167,6 +180,8 @@ All routes require authentication unless noted.
 | `DELETE` | `/api/settings/credentials/:provider` | Remove stored key |
 | `GET` | `/api/docs/:filename` | Get a memory doc (AGENTS.md, MEMORY.md, SUMMARIES.json) |
 | `PUT` | `/api/docs/AGENTS.md` | Update agent instructions (user-editable) |
+| `POST` | `/api/account/export` | Download a ZIP of all user data (GDPR export) |
+| `DELETE` | `/api/account` | Permanently delete account and all associated data |
 | `GET` | `/api/health` | Health check (unauthenticated) |
 
 ---
@@ -185,6 +200,10 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `memory_docs` — per-user memory files: AGENTS.md, MEMORY.md, SUMMARIES.json
 - `welcome_templates` — seeded welcome message content
 - `audit_logs` — immutable credential operation audit trail
+- `subscription_plans` — plan definitions (free, future paid tiers)
+- `user_subscriptions` — per-user active plan with Stripe integration fields
+- `usage_meters` — per-user per-period counters (messages, imports, storage)
+- `rate_limit_hits` — Postgres-backed rate limit counter store
 - `_migrations` — tracks applied SQL files
 
 ---

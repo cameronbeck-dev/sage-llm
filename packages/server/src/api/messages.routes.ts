@@ -3,11 +3,12 @@ import { requireAuth } from '../auth/middleware.js';
 import { chatStream } from '../services/chat.js';
 import { getConversation } from '../services/conversations.js';
 import { createMessage } from '../services/messages.js';
+import { chatLimiter } from '../middleware/rateLimit.js';
 import type { ContentBlock } from '@sage/shared';
 
 export const messagesRouter = Router({ mergeParams: true });
 
-messagesRouter.post('/', requireAuth, async (req, res, next) => {
+messagesRouter.post('/', requireAuth, chatLimiter, async (req, res, next) => {
   const { id: conversationId } = req.params;
   const { message, role, content, previousId } = req.body as {
     message?: string;

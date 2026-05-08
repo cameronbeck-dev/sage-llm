@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import express from 'express';
 import { config } from './config.js';
+import { logger } from './logger.js';
+import { initSentry, sentryErrorHandler } from './sentry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { migrate } from './db/migrate.js';
@@ -11,12 +13,23 @@ import { sessionMiddleware } from './auth/session.js';
 import { securityMiddleware } from './middleware/security.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiRouter } from './api/router.js';
+import { requestIdMiddleware } from './middleware/requestId.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import { getObjectStore } from './storage/index.js';
+
+initSentry();
 
 const app = express();
 
+if (config.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+app.use(requestIdMiddleware);
 app.use(securityMiddleware);
 app.use(express.json());
 app.use(sessionMiddleware);
+app.use(requestLogger);
 
 app.use('/api', apiRouter);
 
@@ -28,6 +41,7 @@ if (existsSync(join(publicDir, 'index.html'))) {
   });
 }
 
+app.use(sentryErrorHandler() as unknown as express.ErrorRequestHandler);
 app.use(errorHandler as express.ErrorRequestHandler);
 
 async function main() {
@@ -35,19 +49,22 @@ async function main() {
     try {
       await migrate();
     } catch (err) {
-      console.error('[startup] migration failed', err);
+      logger.error({ err }, '[startup] migration failed');
     }
   } else {
-    console.warn('[startup] DATABASE_URL not set, skipping migrations');
+    logger.warn('[startup] DATABASE_URL not set, skipping migrations');
   }
 
+  getObjectStore();
+  logger.info({ store: config.OBJECT_STORE }, 'object store initialized');
+
   app.listen(config.PORT, () => {
-    console.log(`Sage server running on http://localhost:${config.PORT}`);
+    logger.info(`Sage server running on http://localhost:${config.PORT}`);
   });
 }
 
 main().catch((err) => {
-  console.error('[startup] fatal error', err);
+  logger.error({ err }, '[startup] fatal error');
   process.exit(1);
 });
 

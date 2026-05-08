@@ -1,17 +1,176 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../state/settingsStore.js';
 import { triggerToast } from '../components/ui/ToastContainer.js';
+import type { SummaryEntry } from '@sage/shared';
+
+function DangerZone() {
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/account/export', { method: 'POST' });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sage-export-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      triggerToast((err as Error).message, 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (confirmText !== 'DELETE') return;
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/account', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      window.location.href = '/login';
+    } catch (err) {
+      triggerToast((err as Error).message, 'error');
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <section
+      className="settings-section pixel-border"
+      style={{ borderColor: 'rgba(220,50,50,0.5)' }}
+    >
+      <h2 className="settings-section__title" style={{ color: '#e05555' }}>Danger Zone</h2>
+      <p className="settings-info" style={{ opacity: 0.7, marginBottom: 16 }}>
+        These actions are irreversible. Please proceed with caution.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <button
+          className="btn"
+          onClick={handleExport}
+          disabled={exporting}
+          style={{ borderColor: 'rgba(220,50,50,0.5)', color: '#e05555' }}
+        >
+          {exporting ? 'Exporting...' : 'Export my data'}
+        </button>
+        <button
+          className="btn"
+          onClick={() => { setDeleteModalOpen(true); setConfirmText(''); }}
+          style={{ borderColor: 'rgba(220,50,50,0.5)', color: '#e05555' }}
+        >
+          Delete my account
+        </button>
+      </div>
+
+      {deleteModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setDeleteModalOpen(false)}
+        >
+          <div
+            style={{
+              background: 'var(--color-surface, #1a1a1a)',
+              border: '1px solid rgba(220,50,50,0.6)',
+              borderRadius: 4,
+              padding: 24,
+              maxWidth: 400,
+              width: '90%',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, color: '#e05555' }}>Delete account</h3>
+            <p className="settings-info" style={{ marginBottom: 16 }}>
+              This will permanently delete your account, all conversations, messages, and stored data.
+              Type <strong>DELETE</strong> to confirm.
+            </p>
+            <input
+              className="api-key-input"
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="Type DELETE to confirm"
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                className="btn"
+                onClick={handleDelete}
+                disabled={confirmText !== 'DELETE' || deleting}
+                style={{ borderColor: 'rgba(220,50,50,0.7)', color: '#e05555' }}
+              >
+                {deleting ? 'Deleting...' : 'Confirm delete'}
+              </button>
+              <button
+                className="btn"
+                onClick={() => setDeleteModalOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 type ProviderId = 'openai' | 'minimax';
 
-// AGENTS.md editor section
-function AgentInstructionsSection() {
+function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="settings-section pixel-border">
+      <button
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          width: '100%',
+          textAlign: 'left',
+        }}
+      >
+        <h2 className="settings-section__title" style={{ margin: 0, flex: 1 }}>{title}</h2>
+        <span style={{ fontSize: 12, opacity: 0.6, userSelect: 'none' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </section>
+  );
+}
+
+function AgentInstructionsContent() {
   const [agentsContent, setAgentsContent] = useState('');
   const [agentsSaving, setAgentsSaving] = useState(false);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const fetched = useRef(false);
 
   useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
     fetch('/api/docs/AGENTS.md')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setAgentsContent(d.content); })
@@ -36,8 +195,7 @@ function AgentInstructionsSection() {
   }
 
   return (
-    <section className="settings-section pixel-border">
-      <h2 className="settings-section__title">Agent Instructions</h2>
+    <>
       <p className="settings-info">
         Edit the AGENTS.md file that controls how Sage behaves. This is raw Markdown — no preview.
       </p>
@@ -62,7 +220,86 @@ function AgentInstructionsSection() {
           </div>
         </>
       )}
-    </section>
+    </>
+  );
+}
+
+function MemoryContent() {
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const fetched = useRef(false);
+
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    fetch('/api/docs/MEMORY.md')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setContent(d.content); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="settings-info">Loading...</p>;
+
+  if (!content.trim()) {
+    return <p className="settings-info" style={{ opacity: 0.6 }}>Sage hasn't recorded any memories yet.</p>;
+  }
+
+  return (
+    <textarea
+      className="settings-textarea"
+      value={content}
+      readOnly
+      rows={16}
+    />
+  );
+}
+
+function SummariesContent() {
+  const [raw, setRaw] = useState('');
+  const [loading, setLoading] = useState(true);
+  const fetched = useRef(false);
+
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    fetch('/api/docs/SUMMARIES.json')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setRaw(d.content); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="settings-info">Loading...</p>;
+
+  if (!raw.trim()) {
+    return <p className="settings-info" style={{ opacity: 0.6 }}>No conversation summaries yet.</p>;
+  }
+
+  let entries: SummaryEntry[] | null = null;
+  try {
+    const parsed = JSON.parse(raw);
+    entries = parsed.entries ?? null;
+  } catch {
+    return <pre style={{ overflowX: 'auto', fontSize: 12 }}>{raw}</pre>;
+  }
+
+  if (!entries || entries.length === 0) {
+    return <p className="settings-info" style={{ opacity: 0.6 }}>No conversation summaries yet.</p>;
+  }
+
+  const newest = [...entries].reverse();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {newest.map(entry => (
+        <div key={entry.id} style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>{entry.conversationTitle}</div>
+          <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 6 }}>
+            {new Date(entry.timestamp).toLocaleString()}
+          </div>
+          <div style={{ fontSize: 13 }}>{entry.summary}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -322,7 +559,19 @@ export default function Settings() {
         </div>
       </section>
 
-      <AgentInstructionsSection />
+      <CollapsibleSection title="Agent Instructions (AGENTS.md)">
+        <AgentInstructionsContent />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Memory (MEMORY.md)">
+        <MemoryContent />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Conversation Summaries (SUMMARIES.json)">
+        <SummariesContent />
+      </CollapsibleSection>
+
+      <DangerZone />
     </div>
   );
 }

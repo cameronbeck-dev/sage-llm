@@ -6,8 +6,8 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
-function run(name, cmd, args, cwd) {
-  const colors = { server: '\x1b[36m', client: '\x1b[33m' };
+function run(name, cmd, args, cwd, opts = {}) {
+  const colors = { server: '\x1b[36m', client: '\x1b[33m', worker: '\x1b[35m' };
   const reset = '\x1b[0m';
   const color = colors[name] ?? '\x1b[35m';
 
@@ -28,6 +28,10 @@ function run(name, cmd, args, cwd) {
 
   proc.on('close', (code) => {
     if (code !== 0) {
+      if (opts.optional) {
+        console.warn(`${color}[${name}]${reset} exited with code ${code} (optional — leaving down)`);
+        return;
+      }
       console.error(`${color}[${name}]${reset} exited with code ${code}`);
       process.exit(code ?? 1);
     }
@@ -41,3 +45,4 @@ const clientDir = path.join(root, 'packages', 'client');
 
 run('server', 'npx', ['tsx', 'watch', 'src/index.ts'], serverDir);
 run('client', 'npx', ['vite'], clientDir);
+run('worker', 'npx', ['tsx', 'watch', 'src/jobs/worker.ts'], serverDir, { optional: true });
