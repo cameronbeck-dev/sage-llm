@@ -1,5 +1,5 @@
 import { getPool } from '../db/pool.js';
-import { getProvider } from '../providers/registry.js';
+import { getProvider, listProviders } from '../providers/registry.js';
 import { listMessages, createMessage } from './messages.js';
 import { getUserSettings, updateUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
@@ -8,7 +8,7 @@ import { getCurrentPeriodSpendCents } from './usage.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
@@ -40,7 +40,8 @@ export async function* chatStream(
   userId: string,
   conversationId: string,
   userMessage: string,
-  previousId?: string
+  previousId?: string,
+  override?: { provider?: string; model?: string }
 ): AsyncIterable<SSEChunk> {
   const settings = await getUserSettings(userId);
 
@@ -110,12 +111,41 @@ export async function* chatStream(
   const userContent: ContentBlock[] = [{ type: 'text', text: userMessage }];
   await createMessage(conversationId, 'user', userContent);
 
+  // Resolve provider/model: per-request override > conversation preferred > user settings
+  let resolvedProviderId = settings.activeProvider;
+  let resolvedModel = settings.activeModel;
+
+  const { getConversation, updateConversation } = await import('./conversations.js');
+  const convo = await getConversation(userId, conversationId);
+
+  let usedOverride = false;
+  if (override?.provider && override?.model) {
+    const knownProviders = listProviders().map((p) => p.id);
+    if (knownProviders.includes(override.provider)) {
+      resolvedProviderId = override.provider;
+      resolvedModel = override.model;
+      usedOverride = true;
+    }
+  }
+
+  if (!usedOverride && convo?.preferredProvider && convo?.preferredModel) {
+    resolvedProviderId = convo.preferredProvider;
+    resolvedModel = convo.preferredModel;
+  }
+
+  if (usedOverride) {
+    await updateConversation(userId, conversationId, {
+      preferredProvider: override!.provider,
+      preferredModel: override!.model,
+    });
+  }
+
   let apiKey: string;
   try {
-    apiKey = await getDecryptedCredential(userId, settings.activeProvider);
+    apiKey = await getDecryptedCredential(userId, resolvedProviderId);
   } catch (err) {
     if (err instanceof CredentialNotFoundError) {
-      yield { type: 'error', error: `No API key configured for ${settings.activeProvider}. Add one in Settings.` };
+      yield { type: 'error', error: `No API key configured for ${resolvedProviderId}. Add one in Settings.` };
       return;
     }
     yield { type: 'error', error: (err as Error).message };
@@ -123,8 +153,8 @@ export async function* chatStream(
   }
 
   const creds = { apiKey };
-  const provider = getProvider(settings.activeProvider);
-  const model = settings.activeModel;
+  const provider = getProvider(resolvedProviderId);
+  const model = resolvedModel;
 
   const providerMessages = history
     .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -140,6 +170,7 @@ export async function* chatStream(
   const chatReq = { model, messages: providerMessages, system };
 
   let fullText = '';
+  let fullThinking = '';
   let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
 
   try {
@@ -148,6 +179,7 @@ export async function* chatStream(
         fullText += chunk.text;
         yield { type: 'text', delta: chunk.text };
       } else if (chunk.type === 'thinking' && chunk.text) {
+        fullThinking += chunk.text;
         yield { type: 'thinking', delta: chunk.text };
       } else if (chunk.type === 'done') {
         finalUsage = chunk.usage;
@@ -157,7 +189,7 @@ export async function* chatStream(
           const truncatedCostUsd = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
           await createMessage(conversationId, 'assistant', [
             { type: 'text', text: fullText },
-          ], settings.activeProvider, model, finalUsage, truncatedCostUsd);
+          ], resolvedProviderId, model, finalUsage, truncatedCostUsd, fullThinking || undefined);
           yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCostUsd };
           yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
           return;
@@ -184,11 +216,14 @@ export async function* chatStream(
     conversationId,
     'assistant',
     [{ type: 'text', text: fullText }],
-    settings.activeProvider,
+    resolvedProviderId,
     model,
     finalUsage,
-    costUsd
+    costUsd,
+    fullThinking || undefined
   );
+
+  yield { type: 'response_complete', costUsd };
 
   // Budget check — warn once per calendar month when budget is crossed
   yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
@@ -224,7 +259,7 @@ export async function* chatStream(
     yield { type: 'title', title: titleFromMsg };
   }
 
-  yield { type: 'done', usage: finalUsage, costUsd: costUsd };
+  yield { type: 'done', usage: finalUsage };
 }
 
 async function* maybeYieldBudgetWhisper(

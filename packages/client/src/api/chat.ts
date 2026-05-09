@@ -1,5 +1,5 @@
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
@@ -12,12 +12,15 @@ export interface SSEChunk {
 export async function* streamChat(
   conversationId: string,
   message: string,
-  previousId?: string
+  previousId?: string,
+  signal?: AbortSignal,
+  modelOverride?: { provider: string; model: string }
 ): AsyncIterable<SSEChunk> {
   const res = await fetch(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, previousId }),
+    body: JSON.stringify({ message, previousId, ...(modelOverride ?? {}) }),
+    signal,
   });
 
   if (!res.ok || !res.body) {

@@ -8,6 +8,7 @@ import {
   deleteConversation,
 } from '../services/conversations.js';
 import { listMessages } from '../services/messages.js';
+import { listProviders } from '../providers/registry.js';
 
 export const conversationsRouter = Router();
 
@@ -47,8 +48,27 @@ conversationsRouter.get('/:id', requireAuth, async (req, res, next) => {
 
 conversationsRouter.patch('/:id', requireAuth, async (req, res, next) => {
   try {
-    const { title, archived } = req.body as { title?: string; archived?: boolean };
-    await updateConversation(req.session!.userId!, req.params.id, { title, archived });
+    const { title, archived, preferredProvider, preferredModel } = req.body as {
+      title?: string;
+      archived?: boolean;
+      preferredProvider?: string | null;
+      preferredModel?: string | null;
+    };
+
+    if (preferredProvider != null) {
+      const knownIds = listProviders().map((p) => p.id);
+      if (!knownIds.includes(preferredProvider)) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: `Unknown provider: ${preferredProvider}` } });
+        return;
+      }
+    }
+
+    await updateConversation(req.session!.userId!, req.params.id, {
+      title,
+      archived,
+      preferredProvider,
+      preferredModel,
+    });
     const convo = await getConversation(req.session!.userId!, req.params.id);
     res.json(convo);
   } catch (err) {

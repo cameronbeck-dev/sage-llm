@@ -14,8 +14,8 @@ interface CredentialInfo {
 }
 
 interface SettingsState {
-  provider: string;
-  model: string;
+  provider: string | null;
+  model: string | null;
   availableProviders: ProviderInfo[];
   credentials: Record<string, CredentialInfo>;
   isLoading: boolean;
@@ -44,11 +44,11 @@ function debouncedFlush() {
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  provider: 'openai',
-  model: 'gpt-4o-mini',
+  provider: null as string | null,
+  model: null as string | null,
   availableProviders: [],
   credentials: {},
-  isLoading: false,
+  isLoading: true,
   pendingChanges: null,
   monthlyBudgetUsd: null,
 

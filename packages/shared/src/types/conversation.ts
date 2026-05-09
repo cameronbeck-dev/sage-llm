@@ -5,4 +5,6 @@ export interface Conversation {
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  preferredProvider?: string | null;
+  preferredModel?: string | null;
 }

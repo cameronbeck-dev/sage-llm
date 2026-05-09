@@ -9,6 +9,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 ## Features
 
 - **Multi-Provider Support** — OpenAI, Minimax; plug in new providers with one file
+- **Per-Conversation Model Picker** — Switch model mid-conversation without changing your global default; choice persists per conversation
 - **Persistent History** — Conversations and messages stored in PostgreSQL
 - **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are independent
 - **GitHub OAuth** — No passwords; login with your GitHub account

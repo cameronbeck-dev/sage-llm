@@ -5,6 +5,7 @@ import type { SageState } from '../hooks/useSageState';
 interface ConversationState {
   conversations: Conversation[];
   activeConversationId: string | null;
+  activeConversation: Conversation | null;
   activeMessages: Message[];
   streamingText: string;
   isStreaming: boolean;
@@ -27,11 +28,13 @@ interface ConversationState {
   setSageMessage: (message: string) => void;
   updateConversationTitle: (id: string, title: string) => Promise<void>;
   setLastTurnCost: (value: number | null) => void;
+  setPreferredModel: (provider: string, model: string) => Promise<void>;
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
+  activeConversation: null,
   activeMessages: [],
   streamingText: '',
   isStreaming: false,
@@ -66,6 +69,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (id === null) {
       set((s) => ({
         activeConversationId: null,
+        activeConversation: null,
         previousConversationId: s.activeConversationId ?? s.previousConversationId,
         activeMessages: [],
         streamingText: '',
@@ -74,11 +78,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }));
       return;
     }
-    set({ activeConversationId: id, activeMessages: [], streamingText: '', isStreaming: false, thinkingMessageId: null });
+    set({ activeConversationId: id, activeConversation: null, activeMessages: [], streamingText: '', isStreaming: false, thinkingMessageId: null });
     const res = await fetch(`/api/conversations/${id}`);
     if (!res.ok) return;
     const data = (await res.json()) as Conversation & { messages: Message[] };
-    set({ activeMessages: data.messages });
+    const { messages: _, ...convoFields } = data;
+    set({ activeConversation: convoFields, activeMessages: data.messages });
   },
 
   setThinkingMessage(id) {
@@ -183,5 +188,27 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   setLastTurnCost(value: number | null) {
     set({ lastTurnCostUsd: value });
+  },
+
+  async setPreferredModel(provider: string, model: string) {
+    const { activeConversationId } = get();
+    if (!activeConversationId) return;
+
+    set((s) => ({
+      activeConversation: s.activeConversation
+        ? { ...s.activeConversation, preferredProvider: provider, preferredModel: model }
+        : s.activeConversation,
+      conversations: s.conversations.map((c) =>
+        c.id === activeConversationId
+          ? { ...c, preferredProvider: provider, preferredModel: model }
+          : c
+      ),
+    }));
+
+    await fetch(`/api/conversations/${activeConversationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferredProvider: provider, preferredModel: model }),
+    });
   },
 }));

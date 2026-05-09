@@ -9,6 +9,8 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
     archivedAt: row.archived ? (row.updated_at as string) : null,
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
+    preferredProvider: (row.preferred_provider as string | null) ?? null,
+    preferredModel: (row.preferred_model as string | null) ?? null,
   };
 }
 
@@ -56,7 +58,12 @@ export async function createConversation(
 export async function updateConversation(
   userId: string,
   conversationId: string,
-  updates: { title?: string; archived?: boolean }
+  updates: {
+    title?: string;
+    archived?: boolean;
+    preferredProvider?: string | null;
+    preferredModel?: string | null;
+  }
 ): Promise<void> {
   const pool = getPool();
   const fields: string[] = [];
@@ -70,6 +77,14 @@ export async function updateConversation(
   if (updates.archived !== undefined) {
     fields.push(`archived = $${idx++}`);
     values.push(updates.archived);
+  }
+  if (updates.preferredProvider !== undefined) {
+    fields.push(`preferred_provider = $${idx++}`);
+    values.push(updates.preferredProvider);
+  }
+  if (updates.preferredModel !== undefined) {
+    fields.push(`preferred_model = $${idx++}`);
+    values.push(updates.preferredModel);
   }
   if (fields.length === 0) return;
 

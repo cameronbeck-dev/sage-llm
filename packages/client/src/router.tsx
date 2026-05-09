@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './state/authStore.js';
+import { useSettingsStore } from './state/settingsStore.js';
 import Login from './pages/Login.js';
 import Chat from './pages/Chat.js';
 import Settings from './pages/Settings.js';
@@ -22,11 +23,18 @@ function RedirectIfAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function AppRouter() {
-  const { fetchMe } = useAuthStore();
+  const { fetchMe, user } = useAuthStore();
+  const { loadSettings, loadProviders } = useSettingsStore();
 
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadSettings();
+    loadProviders();
+  }, [user?.id, loadSettings, loadProviders]);
 
   return (
     <BrowserRouter>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../state/settingsStore.js';
 import { triggerToast } from '../components/ui/ToastContainer.js';
+import ProviderModelSelect from '../components/chat/ProviderModelSelect.js';
 import type { SummaryEntry } from '@sage/shared';
 
 function DangerZone() {
@@ -488,6 +489,7 @@ export default function Settings() {
     model,
     availableProviders,
     credentials,
+    isLoading,
     loadSettings,
     loadProviders,
     updateProvider,
@@ -503,16 +505,13 @@ export default function Settings() {
     loadProviders();
   }, [loadSettings, loadProviders]);
 
-  const activeProvider = availableProviders.find((p) => p.id === provider);
-  const models = activeProvider?.models ?? [];
-
-  function handleProviderChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    updateProvider(e.target.value);
+  function handleProviderChange(value: string) {
+    updateProvider(value);
     triggerToast('Settings saved.', 'success');
   }
 
-  function handleModelChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    updateModel(e.target.value);
+  function handleModelChange(value: string) {
+    updateModel(value);
     triggerToast('Settings saved.', 'success');
   }
 
@@ -550,49 +549,15 @@ export default function Settings() {
 
       <section className="settings-section pixel-border">
         <h2 className="settings-section__title">Provider</h2>
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="provider-select">
-            Active Provider
-          </label>
-          <select
-            id="provider-select"
-            className="settings-select"
-            value={provider}
-            onChange={handleProviderChange}
-          >
-            {availableProviders.length > 0 ? (
-              availableProviders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))
-            ) : (
-              <option value="openai">OpenAI</option>
-            )}
-          </select>
-        </div>
-
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="model-select">
-            Model
-          </label>
-          <select
-            id="model-select"
-            className="settings-select"
-            value={model}
-            onChange={handleModelChange}
-          >
-            {models.length > 0 ? (
-              models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName}
-                </option>
-              ))
-            ) : (
-              <option value={model}>{model}</option>
-            )}
-          </select>
-        </div>
+        <ProviderModelSelect
+          provider={provider}
+          model={model}
+          availableProviders={availableProviders}
+          isLoading={isLoading}
+          onProviderChange={handleProviderChange}
+          onModelChange={handleModelChange}
+          layout="stacked"
+        />
       </section>
 
       <section className="settings-section pixel-border">
