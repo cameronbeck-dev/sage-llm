@@ -2,17 +2,16 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { LLMProvider, ResolvedCredentials, ChatRequest, ChatChunk, Usage } from './types.js';
 import type { ModelInfo } from '@sage/shared';
 
-// TODO: verify pricing before launch
 const ANTHROPIC_PRICING: Record<string, { input: number; output: number }> = {
-  'claude-opus-4-5':   { input: 15,  output: 75  },
-  'claude-sonnet-4-5': { input: 3,   output: 15  },
-  'claude-haiku-4-5':  { input: 1,   output: 5   },
+  'claude-opus-4-7':            { input: 5, output: 25 },
+  'claude-sonnet-4-6':          { input: 3, output: 15 },
+  'claude-haiku-4-5-20251001':  { input: 1, output: 5  },
 };
 
 const CURATED_MODELS: ModelInfo[] = [
-  { id: 'claude-opus-4-5',   displayName: 'Claude Opus 4.5',   inputCostPer1k: ANTHROPIC_PRICING['claude-opus-4-5'].input / 1000,   outputCostPer1k: ANTHROPIC_PRICING['claude-opus-4-5'].output / 1000 },
-  { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet 4.5', inputCostPer1k: ANTHROPIC_PRICING['claude-sonnet-4-5'].input / 1000, outputCostPer1k: ANTHROPIC_PRICING['claude-sonnet-4-5'].output / 1000 },
-  { id: 'claude-haiku-4-5',  displayName: 'Claude Haiku 4.5',  inputCostPer1k: ANTHROPIC_PRICING['claude-haiku-4-5'].input / 1000,  outputCostPer1k: ANTHROPIC_PRICING['claude-haiku-4-5'].output / 1000 },
+  { id: 'claude-opus-4-7',           displayName: 'Claude Opus 4.7',   inputCostPer1k: ANTHROPIC_PRICING['claude-opus-4-7'].input / 1000,           outputCostPer1k: ANTHROPIC_PRICING['claude-opus-4-7'].output / 1000 },
+  { id: 'claude-sonnet-4-6',         displayName: 'Claude Sonnet 4.6', inputCostPer1k: ANTHROPIC_PRICING['claude-sonnet-4-6'].input / 1000,         outputCostPer1k: ANTHROPIC_PRICING['claude-sonnet-4-6'].output / 1000 },
+  { id: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5',  inputCostPer1k: ANTHROPIC_PRICING['claude-haiku-4-5-20251001'].input / 1000, outputCostPer1k: ANTHROPIC_PRICING['claude-haiku-4-5-20251001'].output / 1000 },
 ];
 
 export const anthropicProvider: LLMProvider = {
