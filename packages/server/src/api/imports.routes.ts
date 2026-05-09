@@ -56,14 +56,22 @@ importsRouter.post('/', requireAuth, importLimiter, upload.single('file'), async
 
     const pool = getPool();
     const existing = await pool.query(
-      `SELECT id, status FROM imports WHERE user_id = $1 AND file_hash = $2`,
+      `SELECT id, status, r2_key FROM imports WHERE user_id = $1 AND file_hash = $2`,
       [userId, fileHash]
     );
     if (existing.rows.length > 0) {
-      await fs.unlink(file.path).catch(() => {});
-      const row = existing.rows[0] as { id: string; status: string };
-      res.json({ importId: row.id, status: row.status });
-      return;
+      const row = existing.rows[0] as { id: string; status: string; r2_key: string | null };
+      if (row.status === 'failed') {
+        if (row.r2_key) {
+          const objectStore = getObjectStore();
+          await objectStore.delete(row.r2_key).catch(() => {});
+        }
+        await pool.query(`DELETE FROM imports WHERE id = $1`, [row.id]);
+      } else {
+        await fs.unlink(file.path).catch(() => {});
+        res.json({ importId: row.id, status: row.status });
+        return;
+      }
     }
 
     const importResult = await pool.query<{ id: string }>(

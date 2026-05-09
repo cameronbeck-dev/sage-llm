@@ -50,8 +50,9 @@ export async function importParseHandler(jobs: Job<ImportParseData>[]): Promise<
       const messageCount = parsed.conversations.reduce((sum, c) => sum + c.messages.length, 0);
 
       await pool.query(
-        `UPDATE imports SET status = 'ready', stats = $1, updated_at = now() WHERE id = $2`,
+        `UPDATE imports SET status = 'ready', source = $1, stats = $2, updated_at = now() WHERE id = $3`,
         [
+          parsed.source,
           JSON.stringify({
             conversationCount: parsed.conversations.length,
             messageCount,

@@ -126,47 +126,97 @@ export function parseChatGPTExport(buffer: Buffer): ParsedImport {
   return { source: 'chatgpt', conversations, skipped: skipped.count, errors };
 }
 
+interface ClaudeConversation {
+  name?: string;
+  created_at?: string;
+  chat_messages?: Array<{
+    sender: 'human' | 'assistant';
+    text?: string;
+    content?: unknown;
+    created_at?: string;
+  }>;
+}
+
+function parseClaudeConversation(
+  conv: ClaudeConversation,
+  errors: string[],
+  skippedRef: { count: number },
+): ParsedConversation | null {
+  const messages: ParsedMessage[] = [];
+  const convCreatedAt = conv.created_at ? new Date(conv.created_at) : new Date();
+  for (const m of conv.chat_messages ?? []) {
+    const role: 'user' | 'assistant' = m.sender === 'human' ? 'user' : 'assistant';
+    let content: string;
+    if (typeof m.text === 'string' && m.text.trim()) {
+      content = m.text;
+    } else if (Array.isArray(m.content)) {
+      const textParts: string[] = [];
+      for (const part of m.content as Array<{ type?: string; text?: string }>) {
+        if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+          textParts.push(part.text);
+        }
+      }
+      content = textParts.join('');
+    } else {
+      content = '';
+    }
+    if (!content.trim()) { skippedRef.count++; continue; }
+    messages.push({
+      role,
+      content,
+      createdAt: m.created_at ? new Date(m.created_at) : convCreatedAt,
+    });
+  }
+  if (messages.length === 0) return null;
+  return {
+    title: conv.name || 'Untitled',
+    createdAt: convCreatedAt,
+    messages,
+  };
+}
+
 export function parseClaudeExport(buffer: Buffer): ParsedImport {
-  const text = buffer.toString('utf-8');
-  const lines = text.split('\n').filter((l) => l.trim());
+  const text = buffer.toString('utf-8').trim();
   const conversations: ParsedConversation[] = [];
   const errors: string[] = [];
-  let skipped = 0;
+  const skipped = { count: 0 };
 
-  for (const line of lines) {
+  if (text.startsWith('[')) {
     try {
-      const conv = JSON.parse(line) as {
-        name: string;
-        created_at: string;
-        chat_messages: Array<{
-          sender: 'human' | 'assistant';
-          text?: string;
-          content?: unknown;
-        }>;
-      };
-
-      const messages: ParsedMessage[] = [];
-      for (const m of conv.chat_messages ?? []) {
-        const role: 'user' | 'assistant' = m.sender === 'human' ? 'user' : 'assistant';
-        const content = typeof m.text === 'string' ? m.text : JSON.stringify(m.content ?? '');
-        if (!content.trim()) { skipped++; continue; }
-        messages.push({ role, content, createdAt: new Date(conv.created_at) });
+      const arr = JSON.parse(text) as ClaudeConversation[];
+      if (!Array.isArray(arr)) {
+        return { source: 'claude', conversations: [], skipped: 0, errors: ['Top-level JSON is not an array'] };
       }
-
-      if (messages.length === 0) { skipped++; continue; }
-
-      conversations.push({
-        title: conv.name || 'Untitled',
-        createdAt: new Date(conv.created_at),
-        messages,
-      });
+      for (const conv of arr) {
+        try {
+          const parsed = parseClaudeConversation(conv, errors, skipped);
+          if (parsed) conversations.push(parsed);
+          else skipped.count++;
+        } catch (err) {
+          errors.push(`Conversation parse error: ${(err as Error).message}`);
+          skipped.count++;
+        }
+      }
+      return { source: 'claude', conversations, skipped: skipped.count, errors };
     } catch (err) {
-      errors.push(`Line parse error: ${(err as Error).message}`);
-      skipped++;
+      return { source: 'claude', conversations: [], skipped: 0, errors: [`Failed to parse JSON: ${(err as Error).message}`] };
     }
   }
 
-  return { source: 'claude', conversations, skipped, errors };
+  const lines = text.split('\n').filter((l) => l.trim());
+  for (const line of lines) {
+    try {
+      const conv = JSON.parse(line) as ClaudeConversation;
+      const parsed = parseClaudeConversation(conv, errors, skipped);
+      if (parsed) conversations.push(parsed);
+      else skipped.count++;
+    } catch (err) {
+      errors.push(`Line parse error: ${(err as Error).message}`);
+      skipped.count++;
+    }
+  }
+
+  return { source: 'claude', conversations, skipped: skipped.count, errors };
 }
 
 export function parseGenericJson(_buffer: Buffer): ParsedImport {
@@ -178,8 +228,44 @@ export function parseGenericJson(_buffer: Buffer): ParsedImport {
   };
 }
 
+export function detectSourceFromBuffer(buffer: Buffer): 'chatgpt' | 'claude' | 'generic' {
+  if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) {
+    return 'chatgpt';
+  }
+  const text = buffer.subarray(0, Math.min(buffer.length, 1024 * 1024)).toString('utf-8').trim();
+  if (text.startsWith('[')) {
+    try {
+      const arr = JSON.parse(buffer.toString('utf-8')) as unknown[];
+      if (Array.isArray(arr) && arr.length > 0) {
+        const first = arr[0] as Record<string, unknown> | null;
+        if (first && typeof first === 'object') {
+          if ('chat_messages' in first) return 'claude';
+          if ('mapping' in first) return 'chatgpt';
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+  if (text.startsWith('{')) {
+    const firstLine = text.split('\n').find((l) => l.trim());
+    if (firstLine) {
+      try {
+        const obj = JSON.parse(firstLine) as Record<string, unknown>;
+        if ('chat_messages' in obj) return 'claude';
+        if ('mapping' in obj) return 'chatgpt';
+      } catch {
+        // fall through
+      }
+    }
+  }
+  return 'generic';
+}
+
 export function parseImport(buffer: Buffer, filename: string, source: 'chatgpt' | 'claude' | 'generic'): ParsedImport {
-  if (source === 'chatgpt') return parseChatGPTExport(buffer);
-  if (source === 'claude') return parseClaudeExport(buffer);
+  let effective = source;
+  if (effective === 'generic') effective = detectSourceFromBuffer(buffer);
+  if (effective === 'chatgpt') return parseChatGPTExport(buffer);
+  if (effective === 'claude') return parseClaudeExport(buffer);
   return parseGenericJson(buffer);
 }
