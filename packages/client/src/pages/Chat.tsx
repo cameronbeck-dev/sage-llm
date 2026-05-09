@@ -88,21 +88,30 @@ export default function Chat() {
     }
 
     isSendingRef.current = true;
+    setInputText('');
     try {
       let conversationId = activeConversationId;
+      let tempConversationId: string | null = null;
 
       if (conversationId === null) {
-        try {
-          const newId = await useConversationStore.getState().createConversation();
-          await setActive(newId);
-          conversationId = newId;
-        } catch (err) {
-          setStreamingError(`Error: ${(err as Error).message}`);
-          return;
-        }
+        tempConversationId = `temp-${crypto.randomUUID()}`;
+        conversationId = tempConversationId;
+        const placeholder: Conversation = {
+          id: tempConversationId,
+          userId: user?.id ?? '',
+          title: text.slice(0, 50),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        useConversationStore.setState((s) => ({
+          conversations: [placeholder, ...s.conversations],
+          activeConversationId: tempConversationId,
+          activeMessages: [],
+          streamingText: '',
+          isStreaming: false,
+          thinkingMessageId: null,
+        }));
       }
-
-      setInputText('');
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -128,6 +137,37 @@ export default function Chat() {
       thinkingTimerRef.current = setInterval(() => {
         setThinkingSeconds((s) => s + 1);
       }, 1000);
+
+      if (tempConversationId !== null) {
+        try {
+          const realId = await useConversationStore.getState().createConversation();
+          const tempId = tempConversationId;
+          useConversationStore.setState((s) => ({
+            conversations: s.conversations.filter((c) => c.id !== tempId),
+            activeConversationId: s.activeConversationId === tempId ? realId : s.activeConversationId,
+            activeMessages: s.activeMessages.map((m) =>
+              m.conversationId === tempId ? { ...m, conversationId: realId } : m
+            ),
+          }));
+          conversationId = realId;
+        } catch (err) {
+          const tempId = tempConversationId;
+          if (thinkingTimerRef.current) {
+            clearInterval(thinkingTimerRef.current);
+            thinkingTimerRef.current = null;
+          }
+          useConversationStore.setState((s) => ({
+            conversations: s.conversations.filter((c) => c.id !== tempId),
+            activeConversationId: s.activeConversationId === tempId ? null : s.activeConversationId,
+            activeMessages: [],
+            isStreaming: false,
+            thinkingMessageId: null,
+          }));
+          onStreamError();
+          setStreamingError(`Error: ${(err as Error).message}`);
+          return;
+        }
+      }
 
       try {
         for await (const chunk of streamChat(conversationId, text, useConversationStore.getState().previousConversationId ?? undefined)) {
