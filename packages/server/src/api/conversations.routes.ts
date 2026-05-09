@@ -14,7 +14,8 @@ export const conversationsRouter = Router();
 
 conversationsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
-    const conversations = await listConversations(req.session!.userId!);
+    const includeArchived = req.query.includeArchived === 'true';
+    const conversations = await listConversations(req.session!.userId!, 50, 0, includeArchived);
     res.json(conversations);
   } catch (err) {
     next(err);

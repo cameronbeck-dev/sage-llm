@@ -8,6 +8,7 @@ import Settings from './pages/Settings.js';
 import Stub from './pages/Stub.js';
 import Usage from './pages/Usage.js';
 import Memory from './pages/Memory.js';
+import Import from './pages/Import.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -85,6 +86,14 @@ export default function AppRouter() {
           element={
             <RequireAuth>
               <Memory />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/import"
+          element={
+            <RequireAuth>
+              <Import />
             </RequireAuth>
           }
         />

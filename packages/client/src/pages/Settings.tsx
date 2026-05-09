@@ -132,7 +132,7 @@ function DangerZone() {
   );
 }
 
-type ProviderId = 'openai' | 'minimax';
+type ProviderId = 'openai' | 'minimax' | 'anthropic';
 
 function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -468,6 +468,39 @@ export default function Settings() {
       </header>
       <h1 className="settings-title">Settings</h1>
 
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+        {[
+          { to: '/import', title: 'Import Conversations', desc: 'Bring in chats from ChatGPT or Claude.ai' },
+          { to: '/memory', title: 'Memory', desc: 'View and edit what Sage remembers about you' },
+          { to: '/usage', title: 'Usage', desc: 'Daily spend, provider breakdown, CSV export' },
+        ].map(({ to, title, desc }) => (
+          <Link
+            key={to}
+            to={to}
+            style={{
+              flex: '1 1 180px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              padding: '12px 16px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 4,
+              textDecoration: 'none',
+              color: 'inherit',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{title}</div>
+              <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>{desc}</div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 2l5 5-5 5"/>
+            </svg>
+          </Link>
+        ))}
+      </div>
+
       <section className="settings-section pixel-border">
         <h2 className="settings-section__title">Provider</h2>
         <ProviderModelSelect
@@ -488,7 +521,7 @@ export default function Settings() {
         </p>
 
         <div className="api-keys-list">
-          {(['openai', 'minimax'] as ProviderId[]).map((pid) => {
+          {(['openai', 'minimax', 'anthropic'] as ProviderId[]).map((pid) => {
             const providerInfo = availableProviders.find((p) => p.id === pid);
             const credInfo = credentials[pid];
             return (

@@ -17,12 +17,13 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
 export async function listConversations(
   userId: string,
   limit = 50,
-  offset = 0
+  offset = 0,
+  includeArchived = false
 ): Promise<Conversation[]> {
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT * FROM conversations
-     WHERE user_id = $1 AND archived = false
+     WHERE user_id = $1 ${includeArchived ? '' : 'AND archived = false'}
      ORDER BY updated_at DESC
      LIMIT $2 OFFSET $3`,
     [userId, limit, offset]

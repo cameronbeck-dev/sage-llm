@@ -1,6 +1,8 @@
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Readable } from 'node:stream';
 import type { ObjectStore } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +27,17 @@ export class LocalDiskStore implements ObjectStore {
   async put(key: string, data: Buffer): Promise<void> {
     const p = await this.keyPath(key);
     await writeFile(p, data);
+  }
+
+  async putStream(key: string, stream: Readable, _contentLength: number): Promise<void> {
+    const p = await this.keyPath(key);
+    await new Promise<void>((resolve, reject) => {
+      const ws = createWriteStream(p);
+      stream.pipe(ws);
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+      stream.on('error', reject);
+    });
   }
 
   async get(key: string): Promise<Buffer> {

@@ -498,12 +498,19 @@ Output a JSON object:
 
 // ─── Trim and migrate summaries ───────────────────────────────────────────────
 
-export async function trimAndMigrateSummaries(userId: string): Promise<void> {
-  const removed = await trimSummaryEntries(userId);
-  if (removed.length === 0) return;
+export async function extractFactsFromSummaries(
+  userId: string,
+  summaries: SummaryEntryRow[],
+  context: 'trimming-old-summaries' | 'fresh-import'
+): Promise<MemoryOp[]> {
+  if (summaries.length === 0) return [];
 
-  const removedSummaries = removed.map(e => `- [${e.conversationTitle}] ${e.summary}`).join('\n');
+  const summaryLines = summaries.map(e => `- [${e.conversationTitle}] ${e.summary}`).join('\n');
   const currentMemory = await renderMemoryMarkdown(userId);
+
+  const contextDescription = context === 'trimming-old-summaries'
+    ? 'Summaries being removed'
+    : 'Summaries from imported conversations the user is bringing into Sage from another assistant — extract durable facts about the user, their projects, preferences, ongoing work';
 
   const prompt = `Review each summary below and extract any facts not already in memory that should be migrated.
 Only extract information that is: new (not in current memory), persistent, and useful.
@@ -511,21 +518,29 @@ Only extract information that is: new (not in current memory), persistent, and u
 Current memory:
 ${currentMemory}
 
-Summaries being removed:
-${removedSummaries}
+${contextDescription}:
+${summaryLines}
 
 Output ONLY a JSON array of memory operations, no other text. Each element:
 { "op": "add", "key": "string", "body": "string", "type": "user|feedback|project|reference|other", "summary": "one-sentence rationale" }
 
 If nothing needs migrating, output: []`;
 
+  const text = await chatSync(userId, prompt);
+  const ops = extractJson<MemoryOp[]>(text);
+  if (!Array.isArray(ops)) {
+    console.error('[extractFactsFromSummaries] parse failed — LLM output:', text.slice(0, 500));
+    return [];
+  }
+  return ops;
+}
+
+export async function trimAndMigrateSummaries(userId: string): Promise<void> {
+  const removed = await trimSummaryEntries(userId);
+  if (removed.length === 0) return;
+
   try {
-    const text = await chatSync(userId, prompt);
-    const ops = extractJson<MemoryOp[]>(text);
-    if (!Array.isArray(ops)) {
-      console.error('[trimAndMigrateSummaries] parse failed — LLM output:', text.slice(0, 500));
-      return;
-    }
+    const ops = await extractFactsFromSummaries(userId, removed, 'trimming-old-summaries');
     const sourceConversationId = removed[0]?.conversationId ?? 'unknown';
     await applyMemoryOps(userId, ops, sourceConversationId, null);
   } catch {

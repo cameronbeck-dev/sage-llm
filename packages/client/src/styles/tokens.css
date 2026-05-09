@@ -17,4 +17,8 @@
 
   --radius: 2px;
   --shadow: 2px 2px 0 #0a0b09;
+
+  /* Mobile */
+  --sidebar-width: 240px;
+  --mobile-breakpoint: 768px;
 }

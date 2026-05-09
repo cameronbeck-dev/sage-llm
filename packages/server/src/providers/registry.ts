@@ -1,6 +1,7 @@
 import type { LLMProvider } from './types.js';
 import { openaiProvider } from './openai.js';
 import { minimaxProvider } from './minimax.js';
+import { anthropicProvider } from './anthropic.js';
 
 const registry = new Map<string, LLMProvider>();
 
@@ -10,6 +11,7 @@ function registerProvider(provider: LLMProvider): void {
 
 registerProvider(openaiProvider);
 registerProvider(minimaxProvider);
+registerProvider(anthropicProvider);
 
 export function getProvider(id: string): LLMProvider {
   const provider = registry.get(id);

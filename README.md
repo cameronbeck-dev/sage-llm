@@ -8,7 +8,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 
 ## Features
 
-- **Multi-Provider Support** — OpenAI, Minimax; plug in new providers with one file
+- **Multi-Provider Support** — OpenAI, Anthropic (Claude), Minimax; plug in new providers with one file
 - **Per-Conversation Model Picker** — Switch model mid-conversation without changing your global default; choice persists per conversation
 - **Persistent History** — Conversations and messages stored in PostgreSQL
 - **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are independent
@@ -19,6 +19,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Audit Logging** — All credential operations logged immutably
 - **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
 - **Soft Monthly Budget** — Optional cap with a single in-chat whisper warning when crossed
+- **Conversation Import** — Import chat history from ChatGPT (.zip) and Claude.ai (.jsonl) exports; conversations are archived and used to seed structured memory
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---
@@ -225,6 +226,18 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 
 ---
 
+## Importing Conversations
+
+Navigate to **Settings → Import Conversations** (or `/import`) to bring in chat history from other assistants.
+
+**Supported formats:**
+- **ChatGPT**: download your data from OpenAI and upload the `.zip` file
+- **Claude.ai**: export your conversations as `.jsonl` and upload the file
+
+Imported conversations are stored as **archived** conversations. Sage summarises each one and extracts persistent facts into your memory. Limits: 500 MB per file, 20 imports per day.
+
+---
+
 ## Memory System
 
 Memories are stored as structured rows in `memory_entries`, with edit history in `memory_entry_versions` and conversation summaries in `summary_entries`. The `/memory` page provides entry-level management: edit, forget, restore from history, and source-trace via the **Why?** drawer (links back to the originating conversation). Migration 016 performs the one-time data move from the previous blob storage (MEMORY.md / SUMMARIES.json).
@@ -238,6 +251,7 @@ After every assistant response, a background pass reviews the conversation and i
 | Provider | Models | Notes |
 |----------|--------|-------|
 | **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo` | API key validated on save |
+| **Anthropic** | `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5` | Add your Anthropic API key in Settings → API Keys |
 | **Minimax** | `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.1` | Uses Anthropic-compatible endpoint |
 
 ### Adding a New Provider
@@ -304,6 +318,13 @@ npm run build     # TypeScript compile + Vite client build
 npm run migrate   # Run pending SQL migrations
 npm test          # Run test suite (if configured)
 ```
+
+---
+
+## Known Limitations
+
+- **Import commit retries are not idempotent** — if a commit job fails partway through, already-archived conversations remain; re-uploading the same file will detect the duplicate (same SHA-256 hash) and return the existing import row without re-committing.
+- **Import rate-limit window is sliding, not calendar-day** — the 20/day limit resets 24 hours after the first request in the window, not at midnight.
 
 ---
 

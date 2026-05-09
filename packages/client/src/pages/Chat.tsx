@@ -25,6 +25,8 @@ export default function Chat() {
     streamingText,
     isStreaming,
     thinkingMessageId,
+    showArchived,
+    setShowArchived,
     loadConversations,
     createConversation,
     setActive,
@@ -46,15 +48,17 @@ export default function Chat() {
   const [editingValue, setEditingValue] = useState('');
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hintDismissed, setHintDismissed] = useState(() => localStorage.getItem('sage.composer-hint-dismissed') === 'true');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const isSendingRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamStartRef = useRef<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sidebarButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     loadConversations();
-  }, [loadConversations]);
+  }, [loadConversations, showArchived]);
 
   useEffect(() => {
     if (isNearBottom && transcriptRef.current) {
@@ -70,6 +74,48 @@ export default function Chat() {
     if (textareaRef.current) resizeTextarea(textareaRef.current);
   }, [inputText]);
 
+  useEffect(() => {
+    if (sidebarOpen) {
+      const frameId = requestAnimationFrame(() => {
+        const sidebar = document.getElementById('chat-sidebar');
+        if (!sidebar) return;
+        const focusable = sidebar.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!first) return;
+        first.focus();
+        function handleKeyDown(e: KeyboardEvent) {
+          if (e.key === 'Escape') {
+            setSidebarOpen(false);
+          } else if (e.key === 'Tab') {
+            if (focusable.length === 0) return;
+            if (e.shiftKey) {
+              if (document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+              }
+            } else {
+              if (document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        }
+        document.addEventListener('keydown', handleKeyDown);
+        (sidebar as HTMLElement & { _cleanupKeydown?: () => void })._cleanupKeydown = () =>
+          document.removeEventListener('keydown', handleKeyDown);
+      });
+      return () => cancelAnimationFrame(frameId);
+    } else {
+      const sidebar = document.getElementById('chat-sidebar') as (HTMLElement & { _cleanupKeydown?: () => void }) | null;
+      sidebar?._cleanupKeydown?.();
+      sidebarButtonRef.current?.focus();
+    }
+  }, [sidebarOpen]);
+
   function handleTranscriptScroll() {
     const el = transcriptRef.current;
     if (!el) return;
@@ -82,6 +128,7 @@ export default function Chat() {
 
   async function handleNewConversation() {
     setActive(null);
+    setSidebarOpen(false);
   }
 
   async function handleSend() {
@@ -301,12 +348,19 @@ export default function Chat() {
 
   return (
     <div className="chat-layout">
-      <aside className="chat-sidebar pixel-border">
+      <div className={`mobile-overlay ${sidebarOpen ? 'mobile-overlay--visible' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside id="chat-sidebar" role="dialog" aria-modal="true" aria-label="Navigation" className={`chat-sidebar pixel-border${sidebarOpen ? ' chat-sidebar--open' : ''}`}>
         <div className="chat-sidebar__sage-strip">
           <SageAvatar state={sageState} />
           <div className="chat-sidebar__sage-message">{sageMessage}</div>
         </div>
         <div className="chat-sidebar__header">
+          <button className="hamburger-btn hamburger-btn--close" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <line x1="2" y1="2" x2="12" y2="12"/>
+              <line x1="12" y1="2" x2="2" y2="12"/>
+            </svg>
+          </button>
           <span className="chat-sidebar__title">Sage</span>
           <button
             className="btn btn--sm btn--primary"
@@ -315,12 +369,23 @@ export default function Chat() {
             + New
           </button>
         </div>
+        <div style={{ padding: '4px 12px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, opacity: 0.7 }}>
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => { setShowArchived(e.target.checked); }}
+              style={{ cursor: 'pointer' }}
+            />
+            Show archived
+          </label>
+        </div>
         <ul className="chat-sidebar__list">
           {conversations.map((convo) => (
             <li
               key={convo.id}
               className={`chat-sidebar__item${activeConversationId === convo.id ? ' chat-sidebar__item--active' : ''}${editingId === convo.id ? ' chat-sidebar__item--editing' : ''}`}
-              onClick={() => setActive(convo.id)}
+              onClick={() => { setActive(convo.id); setSidebarOpen(false); }}
             >
               {editingId === convo.id ? (
                 <input
@@ -368,6 +433,15 @@ export default function Chat() {
       </aside>
 
       <main className="chat-main">
+        <div className="chat-main__header">
+          <button ref={sidebarButtonRef} className="hamburger-btn" type="button" aria-label="Open menu" aria-expanded={sidebarOpen} aria-controls="chat-sidebar" onClick={() => setSidebarOpen(true)}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="3" y1="4" x2="15" y2="4"/>
+              <line x1="3" y1="9" x2="15" y2="9"/>
+              <line x1="3" y1="14" x2="15" y2="14"/>
+            </svg>
+          </button>
+        </div>
         <div className="chat-transcript" ref={transcriptRef} onScroll={handleTranscriptScroll}>
           {activeMessages.length === 0 && !isStreaming ? (
             <div className="chat-empty-state">
@@ -416,9 +490,6 @@ export default function Chat() {
         )}
         <div className="chat-input-bar pixel-border">
           <div className="chat-input-row">
-            {activeConversationId && (
-              <ModelPicker conversationId={activeConversationId} />
-            )}
             <textarea
               ref={textareaRef}
               className="chat-input"
@@ -429,19 +500,22 @@ export default function Chat() {
               rows={1}
               disabled={isStreaming}
             />
-            {isStreaming ? (
-              <button className="btn btn--primary btn--stop" onClick={handleStop} aria-label="Stop generating" type="button">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" /></svg>
-              </button>
-            ) : (
-              <button
-                className="btn btn--primary"
-                onClick={handleSend}
-                disabled={!inputText.trim()}
-              >
-                Send
-              </button>
-            )}
+            <div className="chat-input-actions">
+              <ModelPicker conversationId={activeConversationId ?? ''} />
+              {isStreaming ? (
+                <button className="btn btn--primary btn--stop" onClick={handleStop} aria-label="Stop generating" type="button">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" /></svg>
+                </button>
+              ) : (
+                <button
+                  className="btn btn--primary"
+                  onClick={handleSend}
+                  disabled={!inputText.trim()}
+                >
+                  Send
+                </button>
+              )}
+            </div>
           </div>
           {!hintDismissed && (
             <div className="composer-hint">Shift+Enter for new line</div>

@@ -14,6 +14,8 @@ interface ConversationState {
   sageState: SageState;
   sageMessage: string;
   lastTurnCostUsd: number | null;
+  showArchived: boolean;
+  setShowArchived: (value: boolean) => void;
   loadConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<string>;
   setActive: (id: string | null) => Promise<void>;
@@ -43,9 +45,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   sageState: 'idle',
   sageMessage: 'Ready when you are.',
   lastTurnCostUsd: null,
+  showArchived: false,
+
+  setShowArchived(value: boolean) {
+    set({ showArchived: value });
+  },
 
   async loadConversations() {
-    const res = await fetch('/api/conversations');
+    const { showArchived } = get();
+    const url = showArchived ? '/api/conversations?includeArchived=true' : '/api/conversations';
+    const res = await fetch(url);
     if (!res.ok) return;
     const data = (await res.json()) as Conversation[];
     set({ conversations: data });

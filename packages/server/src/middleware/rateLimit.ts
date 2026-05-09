@@ -104,3 +104,12 @@ export const publicReadLimiter = rateLimit({
   handler: onLimitReached,
   skipFailedRequests: false,
 });
+
+export const importLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  keyGenerator: keyByUserId,
+  store: makeStore(),
+  handler: onLimitReached,
+  skipFailedRequests: false,
+});
