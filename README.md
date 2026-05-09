@@ -2,7 +2,7 @@
 
 **One elegant interface. Any LLM. Anytime.**
 
-Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between OpenAI, Minimax, and future providers without losing conversation history, agent files, or memory documents.
+Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between OpenAI, Anthropic (Claude), Minimax, and future providers without losing conversation history, agent files, or memory documents.
 
 ---
 
@@ -19,7 +19,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Audit Logging** — All credential operations logged immutably
 - **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
 - **Soft Monthly Budget** — Optional cap with a single in-chat whisper warning when crossed
-- **Conversation Import** — Import chat history from ChatGPT (.zip) and Claude.ai (.jsonl) exports; conversations are archived and used to seed structured memory
+- **Conversation Import** — Import chat history from ChatGPT (.zip) and Claude.ai (.json) exports; conversations are archived and used to seed structured memory
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---
@@ -138,7 +138,7 @@ sage/
 │   │       ├── auth/         # GitHub OAuth, session middleware, requireAuth
 │   │       ├── crypto/       # AES-256-GCM encrypt/decrypt
 │   │       ├── db/           # pg pool, migrations, pool singleton
-│   │       ├── providers/    # LLMProvider interface + OpenAI + Minimax implementations
+│   │       ├── providers/    # LLMProvider interface + OpenAI + Anthropic + Minimax implementations
 │   │       ├── services/     # Business logic (chat, conversations, messages, settings, credentials, audit)
 │   │       ├── middleware/    # Helmet security headers, global error handler
 │   │       └── index.ts      # Express app entry, startup, migration
@@ -194,6 +194,10 @@ All routes require authentication unless noted.
 | `GET` | `/api/memory/history` | Bulk version history (last 500 events) |
 | `GET` | `/api/memory/summaries` | List active conversation summaries |
 | `DELETE` | `/api/memory/summaries/:id` | Soft-delete a conversation summary |
+| `POST` | `/api/imports` | Upload a conversation export (multipart `file`); enqueues a parse job |
+| `GET` | `/api/imports` | List the user's imports |
+| `GET` | `/api/imports/:id` | Poll an import's status (`uploaded`, `parsing`, `ready`, `committing`, `done`, `failed`) |
+| `POST` | `/api/imports/:id/commit` | Commit a parsed import — creates archived conversations and seeds memory |
 | `PUT` | `/api/settings/budget` | Set monthly budget cap (USD) |
 | `POST` | `/api/account/export` | Download a ZIP of all user data (GDPR export) |
 | `DELETE` | `/api/account` | Permanently delete account and all associated data |
@@ -216,6 +220,7 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `memory_entries` — per-user structured memory facts; soft-deleted; tracks source conversation/message
 - `memory_entry_versions` — full edit history for each memory entry (triggered by user, LLM, or migration)
 - `summary_entries` — per-conversation summaries (max 20 active per user; overflow soft-deleted and facts migrated)
+- `imports` — uploaded export metadata (source, filename, R2 key, SHA-256 hash, parse stats, status)
 - `welcome_templates` — seeded welcome message content
 - `audit_logs` — immutable credential operation audit trail
 - `subscription_plans` — plan definitions (free, future paid tiers)
@@ -228,13 +233,19 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 
 ## Importing Conversations
 
-Navigate to **Settings → Import Conversations** (or `/import`) to bring in chat history from other assistants.
+Open **Import** from the user menu (or visit `/import`, or use the teaser card on Settings) to bring in chat history from other assistants.
 
 **Supported formats:**
-- **ChatGPT**: download your data from OpenAI and upload the `.zip` file
-- **Claude.ai**: export your conversations as `.jsonl` and upload the file
+- **ChatGPT** — request your data from OpenAI and upload the `.zip` (the parser reads `conversations.json` from inside the archive and walks the message tree).
+- **Claude.ai** — request your data from Anthropic and upload the `conversations.json` file. The parser also accepts JSONL (one conversation per line) for older exports.
 
-Imported conversations are stored as **archived** conversations. Sage summarises each one and extracts persistent facts into your memory. Limits: 500 MB per file, 20 imports per day.
+The page sniffs the file's content rather than trusting the extension, so a Claude `conversations.json` won't be misrouted to the generic stub.
+
+**Flow:** upload → parse (asynchronous, status visible via 2-second polling) → preview the parsed conversation count and any per-conversation skips → click **Confirm** to commit. Committing creates archived conversations, summarises each, and extracts persistent facts into structured memory.
+
+**Limits:** 500 MB per file, 20 imports per day per user.
+
+**Re-uploads:** the same file (matched on SHA-256) won't double-import — successful or in-progress rows short-circuit and return the existing import id. **Failed imports** are dropped on re-upload so you can retry after fixing whatever went wrong.
 
 ---
 
@@ -251,7 +262,7 @@ After every assistant response, a background pass reviews the conversation and i
 | Provider | Models | Notes |
 |----------|--------|-------|
 | **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo` | API key validated on save |
-| **Anthropic** | `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5` | Add your Anthropic API key in Settings → API Keys |
+| **Anthropic** | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` | Add your Anthropic API key in Settings → API Keys. Older `claude-*-4-5` aliases still resolve and remain billable. |
 | **Minimax** | `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.1` | Uses Anthropic-compatible endpoint |
 
 ### Adding a New Provider
@@ -323,8 +334,9 @@ npm test          # Run test suite (if configured)
 
 ## Known Limitations
 
-- **Import commit retries are not idempotent** — if a commit job fails partway through, already-archived conversations remain; re-uploading the same file will detect the duplicate (same SHA-256 hash) and return the existing import row without re-committing.
+- **Import commit retries are not idempotent** — if a commit job fails partway through, already-archived conversations remain. Re-uploading after a failure drops the failed row and starts a fresh upload; re-uploading after a successful commit short-circuits and does not re-import.
 - **Import rate-limit window is sliding, not calendar-day** — the 20/day limit resets 24 hours after the first request in the window, not at midnight.
+- **Anthropic pricing is hardcoded** — model prices in `providers/anthropic.ts` are baked in. Verify against the [official pricing page](https://platform.claude.com/docs/en/about-claude/pricing) when bumping models.
 
 ---
 
