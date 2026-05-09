@@ -25,7 +25,7 @@ interface ConversationState {
   deleteConversation: (id: string) => Promise<void>;
   setSageState: (state: SageState) => void;
   setSageMessage: (message: string) => void;
-  updateConversationTitle: (id: string, title: string) => void;
+  updateConversationTitle: (id: string, title: string) => Promise<void>;
   setLastTurnCost: (value: number | null) => void;
 }
 
@@ -165,10 +165,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set({ sageMessage: message });
   },
 
-  updateConversationTitle(id: string, title: string) {
+  async updateConversationTitle(id: string, title: string) {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const res = await fetch(`/api/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    });
+    if (!res.ok) return;
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, title } : c
+        c.id === id ? { ...c, title: trimmed } : c
       ),
     }));
   },

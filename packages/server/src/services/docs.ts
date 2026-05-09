@@ -219,7 +219,7 @@ export async function summarizeConversation(
   userId: string,
   conversationId: string,
   conversationTitle: string
-): Promise<string | null> {
+): Promise<{ summary: string; title: string } | null> {
   const existing = await getDoc(userId, 'SUMMARIES.json');
   if (existing?.content) {
     try {
@@ -258,10 +258,12 @@ export async function summarizeConversation(
     .map(m => m.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(''))
     .join('\n');
 
-  const prompt = `Write a brief summary (2-4 sentences) of what was discussed in this conversation.
-Focus on: facts learned, decisions made, outstanding tasks, topics explored.
+  const prompt = `Analyze this conversation and produce a short title and a brief summary.
 
-Conversation title: ${conversationTitle}
+Title rules: 3-6 words, noun phrase or topic descriptor, no leading article (The/A/An), no trailing punctuation, plain text, suitable as a sidebar label.
+Summary rules: 2-4 sentences. Focus on facts learned, decisions made, outstanding tasks, topics explored.
+
+Conversation title hint: ${conversationTitle}
 Messages:
 ${conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
@@ -269,18 +271,18 @@ Already known from memory:
 ${memoryDoc?.content ?? ''}
 
 Output a JSON object:
-{"summary": "...2-4 sentence summary..."}`;
+{"title": "...3-6 word title...", "summary": "...2-4 sentence summary..."}`;
 
   try {
     const text = await chatSync(userId, prompt);
-    const result = extractJson<{ summary: string }>(text);
-    if (!result || !result.summary) {
+    const result = extractJson<{ title: string; summary: string }>(text);
+    if (!result || !result.title || !result.summary) {
       console.error('[memory] summarizeConversation parse failed for', conversationId, '— LLM output:', text.slice(0, 500));
       return null;
     }
 
-    await appendSummary(userId, conversationId, conversationTitle, result.summary, lastMessageAt);
-    return result.summary;
+    await appendSummary(userId, conversationId, result.title, result.summary, lastMessageAt);
+    return { summary: result.summary, title: result.title };
   } catch (err) {
     console.error('[memory] summarizeConversation failed for', conversationId, ':', err);
     return null;

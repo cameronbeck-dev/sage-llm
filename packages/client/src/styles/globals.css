@@ -151,6 +151,33 @@ body {
   text-overflow: ellipsis;
 }
 
+.chat-sidebar__item-edit {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.chat-sidebar__item-edit:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.chat-sidebar__item-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+}
+
 .chat-sidebar__item-delete {
   flex-shrink: 0;
   background: none;

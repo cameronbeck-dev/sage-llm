@@ -66,10 +66,9 @@ export async function* chatStream(
     const unsummarized = allConvos.filter(c => c.id !== conversationId && !summarizedIds.has(c.id));
     for (const convo of unsummarized) {
       const { summarizeConversation } = await import('./docs.js');
-      const summary = await summarizeConversation(userId, convo.id, convo.title);
-      if (summary) {
-        const newTitle = summary.slice(0, 80);
-        await updateConversation(userId, convo.id, { title: newTitle });
+      const result = await summarizeConversation(userId, convo.id, convo.title);
+      if (result) {
+        await updateConversation(userId, convo.id, { title: result.title });
       }
     }
   }

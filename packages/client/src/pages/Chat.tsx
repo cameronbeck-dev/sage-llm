@@ -28,12 +28,15 @@ export default function Chat() {
     deleteConversation,
     appendThinkingDelta,
     setLastTurnCost,
+    updateConversationTitle,
   } = useConversationStore();
 
   const { sageState, sageMessage, startStreaming, stopStreaming, onStreamError } = useSageState();
 
   const [inputText, setInputText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const isSendingRef = useRef<boolean>(false);
@@ -208,7 +211,27 @@ export default function Chat() {
               className={`chat-sidebar__item${activeConversationId === convo.id ? ' chat-sidebar__item--active' : ''}`}
               onClick={() => setActive(convo.id)}
             >
-              <span className="chat-sidebar__item-title">{convo.title}</span>
+              {editingId === convo.id ? (
+                <input
+                  className="chat-sidebar__item-title-input"
+                  value={editingValue}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setEditingValue(e.target.value)}
+                  onBlur={() => { updateConversationTitle(convo.id, editingValue); setEditingId(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { updateConversationTitle(convo.id, editingValue); setEditingId(null); }
+                    else if (e.key === 'Escape') { setEditingId(null); }
+                  }}
+                />
+              ) : (
+                <span className="chat-sidebar__item-title">{convo.title}</span>
+              )}
+              <button
+                className="chat-sidebar__item-edit"
+                title={`Rename ${convo.title}`}
+                onClick={(e) => { e.stopPropagation(); setEditingId(convo.id); setEditingValue(convo.title); }}
+              >✎</button>
               <button
                 className="chat-sidebar__item-delete"
                 onClick={(e) => { e.stopPropagation(); setDeleteTarget(convo); }}
