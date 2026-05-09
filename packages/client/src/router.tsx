@@ -7,6 +7,7 @@ import Chat from './pages/Chat.js';
 import Settings from './pages/Settings.js';
 import Stub from './pages/Stub.js';
 import Usage from './pages/Usage.js';
+import Memory from './pages/Memory.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -83,7 +84,7 @@ export default function AppRouter() {
           path="/memory"
           element={
             <RequireAuth>
-              <Stub title="Memory Files" />
+              <Memory />
             </RequireAuth>
           }
         />

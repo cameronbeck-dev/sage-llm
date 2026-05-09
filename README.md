@@ -14,7 +14,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Per-User Encrypted Credentials** — API keys AES-256-GCM encrypted at rest; each user's keys are independent
 - **GitHub OAuth** — No passwords; login with your GitHub account
 - **SSE Streaming** — Responses stream in real-time
-- **Persistent Memory** — Sage learns about you over time: AGENTS.md (editable instructions), MEMORY.md (learned facts), SUMMARIES.json (conversation history, capped at 20)
+- **Persistent Memory** — Sage learns about you over time: AGENTS.md (editable instructions), structured memory entries with full edit history, conversation summaries (capped at 20)
 - **Whisper Messages** — Memory updates appear inline in chat as subtle ambient notes
 - **Audit Logging** — All credential operations logged immutably
 - **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
@@ -185,6 +185,14 @@ All routes require authentication unless noted.
 | `PUT` | `/api/docs/AGENTS.md` | Update agent instructions (user-editable) |
 | `GET` | `/api/usage` | Get usage report for the current or specified period |
 | `GET` | `/api/usage/export.csv` | Download daily spend as CSV |
+| `GET` | `/api/memory/entries` | List active memory entries |
+| `PATCH` | `/api/memory/entries/:id` | Edit a memory entry body |
+| `DELETE` | `/api/memory/entries/:id` | Soft-delete (forget) a memory entry |
+| `GET` | `/api/memory/entries/:id/history` | Version history for one entry |
+| `POST` | `/api/memory/entries/:id/restore` | Restore entry from a prior version |
+| `GET` | `/api/memory/history` | Bulk version history (last 500 events) |
+| `GET` | `/api/memory/summaries` | List active conversation summaries |
+| `DELETE` | `/api/memory/summaries/:id` | Soft-delete a conversation summary |
 | `PUT` | `/api/settings/budget` | Set monthly budget cap (USD) |
 | `POST` | `/api/account/export` | Download a ZIP of all user data (GDPR export) |
 | `DELETE` | `/api/account` | Permanently delete account and all associated data |
@@ -203,7 +211,10 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `conversations` — archived flag, timestamps
 - `messages` — role, content (JSON), provider/model, token usage, cost
 - `credentials` — encrypted API key envelopes per user per provider
-- `memory_docs` — per-user memory files: AGENTS.md, MEMORY.md, SUMMARIES.json
+- `memory_docs` — per-user legacy blob files: AGENTS.md (still active), MEMORY.md, SUMMARIES.json (superseded by structured tables)
+- `memory_entries` — per-user structured memory facts; soft-deleted; tracks source conversation/message
+- `memory_entry_versions` — full edit history for each memory entry (triggered by user, LLM, or migration)
+- `summary_entries` — per-conversation summaries (max 20 active per user; overflow soft-deleted and facts migrated)
 - `welcome_templates` — seeded welcome message content
 - `audit_logs` — immutable credential operation audit trail
 - `subscription_plans` — plan definitions (free, future paid tiers)
@@ -211,6 +222,14 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `usage_meters` — per-user per-period counters (messages, imports, storage)
 - `rate_limit_hits` — Postgres-backed rate limit counter store
 - `_migrations` — tracks applied SQL files
+
+---
+
+## Memory System
+
+Memories are stored as structured rows in `memory_entries`, with edit history in `memory_entry_versions` and conversation summaries in `summary_entries`. The `/memory` page provides entry-level management: edit, forget, restore from history, and source-trace via the **Why?** drawer (links back to the originating conversation). Migration 016 performs the one-time data move from the previous blob storage (MEMORY.md / SUMMARIES.json).
+
+After every assistant response, a background pass reviews the conversation and issues `add`, `update`, or `forget` operations as a JSON array. Each applied operation emits a whisper visible inline in chat. When the summary count exceeds 20, the oldest summaries are soft-deleted and any persistent facts are migrated into memory entries via another LLM pass.
 
 ---
 

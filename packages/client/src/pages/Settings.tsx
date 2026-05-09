@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../state/settingsStore.js';
 import { triggerToast } from '../components/ui/ToastContainer.js';
 import ProviderModelSelect from '../components/chat/ProviderModelSelect.js';
-import type { SummaryEntry } from '@sage/shared';
 
 function DangerZone() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -225,84 +224,6 @@ function AgentInstructionsContent() {
   );
 }
 
-function MemoryContent() {
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(true);
-  const fetched = useRef(false);
-
-  useEffect(() => {
-    if (fetched.current) return;
-    fetched.current = true;
-    fetch('/api/docs/MEMORY.md')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setContent(d.content); })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p className="settings-info">Loading...</p>;
-
-  if (!content.trim()) {
-    return <p className="settings-info" style={{ opacity: 0.6 }}>Sage hasn't recorded any memories yet.</p>;
-  }
-
-  return (
-    <textarea
-      className="settings-textarea"
-      value={content}
-      readOnly
-      rows={16}
-    />
-  );
-}
-
-function SummariesContent() {
-  const [raw, setRaw] = useState('');
-  const [loading, setLoading] = useState(true);
-  const fetched = useRef(false);
-
-  useEffect(() => {
-    if (fetched.current) return;
-    fetched.current = true;
-    fetch('/api/docs/SUMMARIES.json')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setRaw(d.content); })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p className="settings-info">Loading...</p>;
-
-  if (!raw.trim()) {
-    return <p className="settings-info" style={{ opacity: 0.6 }}>No conversation summaries yet.</p>;
-  }
-
-  let entries: SummaryEntry[] | null = null;
-  try {
-    const parsed = JSON.parse(raw);
-    entries = parsed.entries ?? null;
-  } catch {
-    return <pre style={{ overflowX: 'auto', fontSize: 12 }}>{raw}</pre>;
-  }
-
-  if (!entries || entries.length === 0) {
-    return <p className="settings-info" style={{ opacity: 0.6 }}>No conversation summaries yet.</p>;
-  }
-
-  const newest = [...entries].reverse();
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {newest.map(entry => (
-        <div key={entry.id} style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>{entry.conversationTitle}</div>
-          <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 6 }}>
-            {new Date(entry.timestamp).toLocaleString()}
-          </div>
-          <div style={{ fontSize: 13 }}>{entry.summary}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 interface CredentialSectionProps {
   providerId: ProviderId;
@@ -586,14 +507,6 @@ export default function Settings() {
 
       <CollapsibleSection title="Agent Instructions (AGENTS.md)">
         <AgentInstructionsContent />
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Memory (MEMORY.md)">
-        <MemoryContent />
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Conversation Summaries (SUMMARIES.json)">
-        <SummariesContent />
       </CollapsibleSection>
 
       <BudgetSection monthlyBudgetUsd={monthlyBudgetUsd} onSave={saveBudget} />

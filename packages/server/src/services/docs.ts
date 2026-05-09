@@ -2,10 +2,10 @@ import { getPool } from '../db/pool.js';
 import { getProvider } from '../providers/registry.js';
 import { getUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
-import { listMessages, createMessage } from './messages.js';
-import type { MemoryDoc, SummaryEntry, MemoryDelta, ContentBlock } from '@sage/shared';
+import { createMessage } from './messages.js';
+import type { MemoryDoc, ContentBlock } from '@sage/shared';
 
-function extractJson<T = unknown>(text: string): T | null {
+export function extractJson<T = unknown>(text: string): T | null {
   if (!text) return null;
   let cleaned = text.trim();
   cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '').trim();
@@ -14,10 +14,18 @@ function extractJson<T = unknown>(text: string): T | null {
   } catch {
     // Fall through
   }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
     try {
-      return JSON.parse(match[0]) as T;
+      return JSON.parse(objMatch[0]) as T;
+    } catch {
+      // fall through
+    }
+  }
+  const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try {
+      return JSON.parse(arrMatch[0]) as T;
     } catch {
       return null;
     }
@@ -49,7 +57,7 @@ const DEFAULT_SUMMARIES = JSON.stringify({ entries: [] });
 
 // ─── Sync chat helper (collects streaming output) ─────────────────────────────
 
-async function chatSync(
+export async function chatSync(
   userId: string,
   prompt: string,
 ): Promise<string> {
@@ -146,246 +154,3 @@ export async function createWhisper(
   return createMessage(conversationId, 'whisper', content);
 }
 
-// ─── Memory review ────────────────────────────────────────────────────────────
-
-export async function reviewMemory(
-  userId: string,
-  conversationId: string
-): Promise<MemoryDelta> {
-  const [docs, history] = await Promise.all([
-    getDocs(userId),
-    listMessages(conversationId, 1000),
-  ]);
-
-  const agentsDoc = docs.find(d => d.filename === 'AGENTS.md');
-  const memoryDoc = docs.find(d => d.filename === 'MEMORY.md');
-
-  const recentMessages = history
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .slice(-10)
-    .map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content
-        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-        .map(b => b.text)
-        .join(''),
-    }));
-
-  const whisperTexts = history
-    .filter(m => m.role === 'whisper')
-    .map(m => m.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(''))
-    .join('\n');
-
-  const prompt = `You are reviewing a conversation to decide if anything should be saved to memory.
-Current AGENTS.md:
-${agentsDoc?.content ?? ''}
-
-Current MEMORY.md:
-${memoryDoc?.content ?? ''}
-
-Recent conversation:
-${recentMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
-
-Already whispered about in this conversation:
-${whisperTexts || '(none)'}
-
-Should anything be added or updated in MEMORY.md? You should only suggest changes if the information is:
-- New (not already in MEMORY.md)
-- Persistent (won't change next session)
-- Useful (would affect how you assist this user)
-
-Output ONLY a single JSON object, no other text:
-- To update/replace MEMORY.md: {"action": "update", "filename": "MEMORY.md", "content": "...full new MEMORY.md content...", "summary": "...brief description of what changed..."}
-- To append to MEMORY.md: {"action": "append", "filename": "MEMORY.md", "content": "...what to append...", "summary": "...brief description..."}
-- If nothing needs changing: {"action": "none"}`;
-
-  try {
-    const text = await chatSync(userId, prompt);
-    const delta = extractJson<MemoryDelta>(text);
-    if (!delta) {
-      console.error('[reviewMemory] failed to parse LLM output:', text.slice(0, 500));
-      return { action: 'none', filename: 'MEMORY.md' };
-    }
-    return delta;
-  } catch (err) {
-    console.error('[reviewMemory] failed:', err);
-    return { action: 'none', filename: 'MEMORY.md' };
-  }
-}
-
-// ─── Session summary ──────────────────────────────────────────────────────────
-
-export async function summarizeConversation(
-  userId: string,
-  conversationId: string,
-  conversationTitle: string
-): Promise<{ summary: string; title: string } | null> {
-  const existing = await getDoc(userId, 'SUMMARIES.json');
-  if (existing?.content) {
-    try {
-      const data = JSON.parse(existing.content) as { entries: SummaryEntry[] };
-      if (data.entries.some(e => e.conversationId === conversationId)) {
-        return null;
-      }
-    } catch {
-      // fall through and let appendSummary handle malformed JSON
-    }
-  }
-
-  const [docs, messages] = await Promise.all([
-    getDocs(userId),
-    listMessages(conversationId, 1000),
-  ]);
-
-  const lastMessageAt = messages.length > 0
-    ? messages[messages.length - 1].createdAt
-    : undefined;
-
-  const memoryDoc = docs.find(d => d.filename === 'MEMORY.md');
-
-  const conversationMessages = messages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content
-        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-        .map(b => b.text)
-        .join(''),
-    }));
-
-  const whisperTexts = messages
-    .filter(m => m.role === 'whisper')
-    .map(m => m.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(''))
-    .join('\n');
-
-  const prompt = `Analyze this conversation and produce a short title and a brief summary.
-
-Title rules: 3-6 words, noun phrase or topic descriptor, no leading article (The/A/An), no trailing punctuation, plain text, suitable as a sidebar label.
-Summary rules: 2-4 sentences. Focus on facts learned, decisions made, outstanding tasks, topics explored.
-
-Conversation title hint: ${conversationTitle}
-Messages:
-${conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
-
-Already known from memory:
-${memoryDoc?.content ?? ''}
-
-Output a JSON object:
-{"title": "...3-6 word title...", "summary": "...2-4 sentence summary..."}`;
-
-  try {
-    const text = await chatSync(userId, prompt);
-    const result = extractJson<{ title: string; summary: string }>(text);
-    if (!result || !result.title || !result.summary) {
-      console.error('[memory] summarizeConversation parse failed for', conversationId, '— LLM output:', text.slice(0, 500));
-      return null;
-    }
-
-    await appendSummary(userId, conversationId, result.title, result.summary, lastMessageAt);
-    return { summary: result.summary, title: result.title };
-  } catch (err) {
-    console.error('[memory] summarizeConversation failed for', conversationId, ':', err);
-    return null;
-  }
-}
-
-// ─── Append summary ────────────────────────────────────────────────────────────
-
-export async function appendSummary(
-  userId: string,
-  conversationId: string,
-  conversationTitle: string,
-  summary: string,
-  lastMessageAt?: string
-): Promise<void> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    'SELECT content FROM memory_docs WHERE user_id = $1 AND filename = $2',
-    [userId, 'SUMMARIES.json']
-  );
-
-  let data = { entries: [] as SummaryEntry[] };
-  if (rows.length > 0 && rows[0].content) {
-    try {
-      data = JSON.parse(rows[0].content as string);
-    } catch {
-      data = { entries: [] };
-    }
-  }
-
-  data.entries.push({
-    id: crypto.randomUUID(),
-    conversationId,
-    conversationTitle,
-    timestamp: new Date().toISOString(),
-    summary,
-    lastMessageAt,
-  });
-
-  await updateDoc(userId, 'SUMMARIES.json', JSON.stringify(data, null, 2));
-  await trimAndMigrateSummaries(userId);
-}
-
-// ─── Trim and migrate ─────────────────────────────────────────────────────────
-
-export async function trimAndMigrateSummaries(userId: string): Promise<void> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    'SELECT content FROM memory_docs WHERE user_id = $1 AND filename = $2',
-    [userId, 'SUMMARIES.json']
-  );
-
-  if (rows.length === 0) return;
-  let data: { entries: SummaryEntry[] };
-  try {
-    data = JSON.parse(rows[0].content as string);
-  } catch {
-    return;
-  }
-
-  if (data.entries.length <= 20) return;
-
-  const sorted = [...data.entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const toRemove = sorted.slice(0, sorted.length - 20);
-  const toKeep = sorted.slice(sorted.length - 20);
-
-  // Batch migrate facts from all removed entries in a single LLM call
-  if (toRemove.length > 0) {
-    const memoryDoc = await getDoc(userId, 'MEMORY.md');
-    const currentMemory = memoryDoc?.content ?? '# Memory\n\n';
-    const removedSummaries = toRemove.map(e => `- [${e.conversationTitle}] ${e.summary}`).join('\n');
-
-    const prompt = `Review each summary below and extract any facts not already in MEMORY.md that should be migrated.
-Only extract information that is: new (not in current MEMORY.md), persistent, and useful.
-
-Current MEMORY.md:
-${currentMemory}
-
-Summaries being removed:
-${removedSummaries}
-
-Output a single JSON object. If there are facts to migrate, output the full updated MEMORY.md:
-{"action": "update", "content": "...full new MEMORY.md content...", "summary": "...brief description of what was migrated..."}
-
-If nothing needs migrating:
-{"action": "none"}`;
-
-    try {
-      const text = await chatSync(userId, prompt);
-      const result = extractJson<{ action: string; content?: string; summary?: string }>(text);
-      if (!result) {
-        console.error('[memory] trimAndMigrateSummaries parse failed — LLM output:', text.slice(0, 500));
-      } else if (result.action === 'update' && result.content) {
-        await updateDoc(userId, 'MEMORY.md', result.content);
-        if (result.summary) {
-          const conversationId = toRemove[0]?.conversationId ?? 'unknown';
-          await createWhisper(conversationId, `Memory migrated: ${result.summary}`);
-        }
-      }
-    } catch {
-      // Non-critical — proceed with trim even if migration fails
-    }
-  }
-
-  await updateDoc(userId, 'SUMMARIES.json', JSON.stringify({ entries: toKeep }, null, 2));
-}

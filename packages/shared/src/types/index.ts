@@ -30,3 +30,42 @@ export interface MemoryDelta {
   content?: string;
   summary?: string;
 }
+
+export interface MemoryEntry {
+  id: string;
+  userId: string;
+  key: string;
+  body: string;
+  type: 'user' | 'feedback' | 'project' | 'reference' | 'other';
+  sourceConversationId: string | null;
+  sourceMessageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface MemoryEntryVersion {
+  id: string;
+  entryId: string;
+  entryKey?: string;
+  body: string | null;
+  changeSummary: string | null;
+  triggeredBy: 'user' | 'llm' | 'migration';
+  createdAt: string;
+}
+
+export interface SummaryEntryRow {
+  id: string;
+  userId: string;
+  conversationId: string | null;
+  conversationTitle: string;
+  summary: string;
+  lastMessageAt: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+export type MemoryOp =
+  | { op: 'add'; key: string; body: string; type?: MemoryEntry['type']; summary: string }
+  | { op: 'update'; entryId: string; body: string; summary: string }
+  | { op: 'forget'; entryId: string; summary: string };
