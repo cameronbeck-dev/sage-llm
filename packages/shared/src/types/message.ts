@@ -17,4 +17,5 @@ export interface Message {
   costUsd?: number;
   createdAt: string;
   thinking?: string;
+  responseTimeMs?: number;
 }

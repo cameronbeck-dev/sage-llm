@@ -17,6 +17,7 @@ function rowToMessage(row: Record<string, unknown>): Message {
         : row.cost_cents != null
         ? (row.cost_cents as number) / 100
         : undefined,
+    thinking: row.thinking as string ?? undefined,
     createdAt: (row.created_at as Date).toISOString(),
   };
 }
@@ -44,13 +45,14 @@ export async function createMessage(
   provider?: string,
   model?: string,
   usage?: { inputTokens: number; outputTokens: number },
-  costUsd?: number
+  costUsd?: number,
+  thinking?: string
 ): Promise<string> {
   const pool = getPool();
   const { rows } = await pool.query<{ id: string }>(
     `INSERT INTO messages
-       (conversation_id, role, content, provider, model, prompt_tokens, completion_tokens, cost_cents, cost_usd)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (conversation_id, role, content, provider, model, prompt_tokens, completion_tokens, cost_cents, cost_usd, thinking)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       conversationId,
@@ -62,6 +64,7 @@ export async function createMessage(
       usage?.outputTokens ?? null,
       costUsd != null ? Math.round(costUsd * 100) : null,
       costUsd ?? null,
+      thinking ?? null,
     ]
   );
 
