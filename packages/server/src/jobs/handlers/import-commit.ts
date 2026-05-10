@@ -53,10 +53,10 @@ export async function importCommitHandler(jobs: Job<ImportCommitData>[]): Promis
       for (const conv of parsed.conversations) {
         try {
           const { rows: convRows } = await pool.query<{ id: string }>(
-            `INSERT INTO conversations (user_id, title, archived, created_at, updated_at)
-             VALUES ($1, $2, true, $3, $3)
+            `INSERT INTO conversations (user_id, title, archived, import_id, created_at, updated_at)
+             VALUES ($1, $2, true, $3, $4, $4)
              RETURNING id`,
-            [userId, conv.title, conv.createdAt]
+            [userId, conv.title, importId, conv.createdAt]
           );
           const convId = convRows[0].id;
           newConversationIds.push(convId);
