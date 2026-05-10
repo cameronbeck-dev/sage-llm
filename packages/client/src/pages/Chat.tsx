@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConversationStore } from '../state/conversationStore.js';
 import { useAuthStore } from '../state/authStore.js';
 import { useSettingsStore } from '../state/settingsStore.js';
+import { useKnowledgeStore } from '../state/knowledgeStore.js';
 import { useSageState } from '../hooks/useSageState.js';
 import { streamChat } from '../api/chat.js';
 import MessageBubble from '../components/chat/MessageBubble.js';
@@ -10,6 +11,21 @@ import UserMenu from '../components/chat/UserMenu.js';
 import SageAvatar from '../components/sage/SageAvatar.js';
 import ConfirmModal from '../components/ui/ConfirmModal.js';
 import type { Conversation, Message } from '@sage/shared';
+
+type Bucket = 'Today' | 'Yesterday' | 'Previous 7 days' | 'Previous 30 days' | 'Older';
+const BUCKET_ORDER: Bucket[] = ['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'];
+
+function bucketFor(date: Date, now: Date): Bucket {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = startOfDay(now);
+  const target = startOfDay(date);
+  const dayDiff = Math.round((today - target) / 86400000);
+  if (dayDiff <= 0) return 'Today';
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff <= 7) return 'Previous 7 days';
+  if (dayDiff <= 30) return 'Previous 30 days';
+  return 'Older';
+}
 
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
@@ -21,11 +37,13 @@ export default function Chat() {
   const {
     conversations,
     activeConversationId,
+    activeConversation,
     activeMessages,
     streamingText,
     isStreaming,
     thinkingMessageId,
     showArchived,
+    isLoadingConversations,
     setShowArchived,
     loadConversations,
     createConversation,
@@ -41,11 +59,14 @@ export default function Chat() {
   } = useConversationStore();
 
   const { sageState, sageMessage, startStreaming, stopStreaming, onStreamError } = useSageState();
+  const { packs, filesByPack, loadPacks, attachPack, detachPack } = useKnowledgeStore();
 
   const [inputText, setInputText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [packPickerOpen, setPackPickerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hintDismissed, setHintDismissed] = useState(() => localStorage.getItem('sage.composer-hint-dismissed') === 'true');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -56,9 +77,25 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarButtonRef = useRef<HTMLButtonElement>(null);
 
+  const groupedConversations = useMemo(() => {
+    const now = new Date();
+    const buckets = new Map<Bucket, typeof conversations>(
+      BUCKET_ORDER.map((b) => [b, []])
+    );
+    for (const convo of conversations) {
+      const bucket = bucketFor(new Date(convo.updatedAt), now);
+      buckets.get(bucket)!.push(convo);
+    }
+    return buckets;
+  }, [conversations]);
+
   useEffect(() => {
     loadConversations();
   }, [loadConversations, showArchived]);
+
+  useEffect(() => {
+    loadPacks();
+  }, [loadPacks]);
 
   useEffect(() => {
     if (isNearBottom && transcriptRef.current) {
@@ -73,6 +110,25 @@ export default function Chat() {
   useEffect(() => {
     if (textareaRef.current) resizeTextarea(textareaRef.current);
   }, [inputText]);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Element | null;
+      if (!target || !target.closest('.chat-sidebar__item-menu, .chat-sidebar__item-menu-trigger')) {
+        setMenuOpenId(null);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpenId(null);
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpenId]);
 
   useEffect(() => {
     if (sidebarOpen) {
@@ -369,63 +425,97 @@ export default function Chat() {
             + New
           </button>
         </div>
-        <div style={{ padding: '4px 12px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, opacity: 0.7 }}>
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(e) => { setShowArchived(e.target.checked); }}
-              style={{ cursor: 'pointer' }}
-            />
-            Show archived
-          </label>
-        </div>
+        <label className={`chat-sidebar__archive-toggle${isLoadingConversations ? ' chat-sidebar__archive-toggle--loading' : ''}`}>
+          <input
+            type="checkbox"
+            className="chat-sidebar__archive-checkbox"
+            checked={showArchived}
+            disabled={isLoadingConversations}
+            onChange={(e) => { setShowArchived(e.target.checked); }}
+          />
+          Show archived
+        </label>
         <ul className="chat-sidebar__list">
-          {conversations.map((convo) => (
-            <li
-              key={convo.id}
-              className={`chat-sidebar__item${activeConversationId === convo.id ? ' chat-sidebar__item--active' : ''}${editingId === convo.id ? ' chat-sidebar__item--editing' : ''}`}
-              onClick={() => { setActive(convo.id); setSidebarOpen(false); }}
-            >
-              {editingId === convo.id ? (
-                <input
-                  className="chat-sidebar__item-title-input"
-                  value={editingValue}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  onBlur={() => { updateConversationTitle(convo.id, editingValue); setEditingId(null); }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { updateConversationTitle(convo.id, editingValue); setEditingId(null); }
-                    else if (e.key === 'Escape') { setEditingId(null); }
-                  }}
-                />
-              ) : (
-                <span className="chat-sidebar__item-title">{convo.title}</span>
-              )}
-              <button
-                className="chat-sidebar__item-edit"
-                aria-label={`Rename ${convo.title}`}
-                title={`Rename ${convo.title}`}
-                onClick={(e) => { e.stopPropagation(); setEditingId(convo.id); setEditingValue(convo.title); }}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9.5 2.5l2 2-7 7H2.5v-2l7-7z"/>
-                </svg>
-              </button>
-              <button
-                className="chat-sidebar__item-delete"
-                onClick={(e) => { e.stopPropagation(); setDeleteTarget(convo); }}
-                aria-label={`Delete ${convo.title}`}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                  <polyline points="2,4 12,4"/>
-                  <path d="M5 4V2.5h4V4M5.5 6v5M8.5 6v5"/>
-                  <path d="M3 4l.8 7.5h6.4L11 4"/>
-                </svg>
-              </button>
-            </li>
-          ))}
+          {BUCKET_ORDER.flatMap((bucket) => {
+            const items = groupedConversations.get(bucket) ?? [];
+            if (items.length === 0) return [];
+            return [
+              <li className="chat-sidebar__group-header" key={`hdr-${bucket}`}>{bucket}</li>,
+              ...items.map((convo) => (
+                <li
+                  key={convo.id}
+                  className={`chat-sidebar__item${activeConversationId === convo.id ? ' chat-sidebar__item--active' : ''}${editingId === convo.id ? ' chat-sidebar__item--editing' : ''}${menuOpenId === convo.id ? ' chat-sidebar__item--menu-open' : ''}`}
+                  onClick={() => { setActive(convo.id); setSidebarOpen(false); }}
+                >
+                  {editingId === convo.id ? (
+                    <input
+                      className="chat-sidebar__item-title-input"
+                      value={editingValue}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      onBlur={() => { updateConversationTitle(convo.id, editingValue); setEditingId(null); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { updateConversationTitle(convo.id, editingValue); setEditingId(null); }
+                        else if (e.key === 'Escape') { setEditingId(null); }
+                      }}
+                    />
+                  ) : (
+                    <span className="chat-sidebar__item-title">{convo.title}</span>
+                  )}
+                  {convo.importId && <span className="chat-sidebar__item-imported-pill">imported</span>}
+                  <button
+                    className="chat-sidebar__item-menu-trigger"
+                    aria-label={`Actions for ${convo.title}`}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpenId === convo.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId(menuOpenId === convo.id ? null : convo.id);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                      <circle cx="3" cy="7" r="1.25"/>
+                      <circle cx="7" cy="7" r="1.25"/>
+                      <circle cx="11" cy="7" r="1.25"/>
+                    </svg>
+                  </button>
+                  {menuOpenId === convo.id && (
+                    <div className="chat-sidebar__item-menu" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="chat-sidebar__item-menu-action"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingId(convo.id);
+                          setEditingValue(convo.title);
+                          setMenuOpenId(null);
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="chat-sidebar__item-menu-action chat-sidebar__item-menu-action--danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(convo);
+                          setMenuOpenId(null);
+                        }}
+                      >
+                        Delete
+                      </button>
+                      <div className="chat-sidebar__item-menu-meta" role="presentation">
+                        Last updated: {new Date(convo.updatedAt).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              )),
+            ];
+          })}
         </ul>
         <div className="chat-sidebar__footer">
           {user && <UserMenu user={user} onLogout={logout} />}
@@ -441,6 +531,53 @@ export default function Chat() {
               <line x1="3" y1="14" x2="15" y2="14"/>
             </svg>
           </button>
+          {activeConversation?.knowledgePackId && (
+            <span className="chat-sidebar__item-imported-pill" style={{ marginLeft: 8 }}>Pack Builder</span>
+          )}
+          {activeConversationId && !activeConversation?.knowledgePackId && (
+            <div style={{ position: 'relative', marginLeft: 'auto' }}>
+              <button className="btn btn--sm" onClick={() => setPackPickerOpen(o => !o)}>
+                Packs{activeConversation?.attachedPackIds?.length ? ` (${activeConversation.attachedPackIds.length})` : ''}
+              </button>
+              {packPickerOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: 8,
+                  zIndex: 100,
+                  minWidth: 200,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                }}>
+                  {packs.length === 0 ? (
+                    <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No packs yet.</p>
+                  ) : packs.map(pack => {
+                    const attached = activeConversation?.attachedPackIds?.includes(pack.id) ?? false;
+                    return (
+                      <label key={pack.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer', fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={attached}
+                          onChange={async () => {
+                            if (attached) {
+                              await detachPack(activeConversationId, pack.id);
+                            } else {
+                              await attachPack(activeConversationId, pack.id);
+                            }
+                            await useConversationStore.getState().setActive(activeConversationId);
+                          }}
+                        />
+                        {pack.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="chat-transcript" ref={transcriptRef} onScroll={handleTranscriptScroll}>
           {activeMessages.length === 0 && !isStreaming ? (
@@ -456,10 +593,12 @@ export default function Chat() {
           ) : (
             (() => {
               let running = 0;
-              const enriched = activeMessages.map((m) => {
-                if (m.role === 'assistant' && typeof m.costUsd === 'number') running += m.costUsd;
-                return { msg: m, sessionRunningUsd: running };
-              });
+              const enriched = activeMessages
+                .filter((m) => m.role !== 'system_internal')
+                .map((m) => {
+                  if (m.role === 'assistant' && typeof m.costUsd === 'number') running += m.costUsd;
+                  return { msg: m, sessionRunningUsd: running };
+                });
               return enriched.map(({ msg, sessionRunningUsd }) => {
                 const text = msg.content
                   .filter((b): b is { type: 'text'; text: string } => b.type === 'text')

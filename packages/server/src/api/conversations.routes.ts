@@ -24,8 +24,8 @@ conversationsRouter.get('/', requireAuth, async (req, res, next) => {
 
 conversationsRouter.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { title } = req.body as { title?: string };
-    const id = await createConversation(req.session!.userId!, title ?? 'New conversation');
+    const { title, knowledgePackId } = req.body as { title?: string; knowledgePackId?: string | null };
+    const id = await createConversation(req.session!.userId!, title ?? 'New conversation', knowledgePackId);
     const convo = await getConversation(req.session!.userId!, id);
     res.status(201).json(convo);
   } catch (err) {

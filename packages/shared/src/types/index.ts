@@ -4,6 +4,7 @@ export * from './provider.js';
 export * from './agent.js';
 export * from './user.js';
 export * from './usage.js';
+export * from './knowledge.js';
 
 // Memory system types
 export interface MemoryDoc {

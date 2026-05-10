@@ -19,6 +19,7 @@ import { getObjectStore } from './storage/index.js';
 import { getBoss } from './jobs/boss.js';
 import { IMPORT_PARSE_JOB } from './jobs/handlers/import-parse.js';
 import { IMPORT_COMMIT_JOB } from './jobs/handlers/import-commit.js';
+import { KNOWLEDGE_PARSE_JOB } from './jobs/handlers/knowledge-parse.js';
 
 initSentry();
 
@@ -65,6 +66,7 @@ async function main() {
     const boss = await getBoss();
     await boss.createQueue(IMPORT_PARSE_JOB);
     await boss.createQueue(IMPORT_COMMIT_JOB);
+    await boss.createQueue(KNOWLEDGE_PARSE_JOB);
   } catch (err) {
     logger.error({ err }, '[startup] failed to ensure import queues exist');
   }

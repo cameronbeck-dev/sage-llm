@@ -7,4 +7,7 @@ export interface Conversation {
   updatedAt: string;
   preferredProvider?: string | null;
   preferredModel?: string | null;
+  importId?: string | null;
+  knowledgePackId?: string | null;
+  attachedPackIds?: string[];
 }

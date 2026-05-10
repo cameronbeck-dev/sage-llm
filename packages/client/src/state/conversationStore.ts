@@ -15,9 +15,10 @@ interface ConversationState {
   sageMessage: string;
   lastTurnCostUsd: number | null;
   showArchived: boolean;
+  isLoadingConversations: boolean;
   setShowArchived: (value: boolean) => void;
   loadConversations: () => Promise<void>;
-  createConversation: (title?: string) => Promise<string>;
+  createConversation: (title?: string, knowledgePackId?: string | null) => Promise<string>;
   setActive: (id: string | null) => Promise<void>;
   setThinkingMessage: (id: string) => void;
   updateThinkingMessage: (delta: string) => void;
@@ -33,6 +34,8 @@ interface ConversationState {
   setPreferredModel: (provider: string, model: string) => Promise<void>;
 }
 
+let loadConversationsRequestId = 0;
+
 export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
@@ -46,27 +49,38 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   sageMessage: 'Ready when you are.',
   lastTurnCostUsd: null,
   showArchived: false,
+  isLoadingConversations: false,
 
   setShowArchived(value: boolean) {
     set({ showArchived: value });
   },
 
   async loadConversations() {
-    const { showArchived } = get();
-    const url = showArchived ? '/api/conversations?includeArchived=true' : '/api/conversations';
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const data = (await res.json()) as Conversation[];
-    set({ conversations: data });
+    const requestId = ++loadConversationsRequestId;
+    set({ isLoadingConversations: true });
+    try {
+      const { showArchived } = get();
+      const url = showArchived ? '/api/conversations?includeArchived=true' : '/api/conversations';
+      const res = await fetch(url);
+      if (requestId !== loadConversationsRequestId) return;
+      if (!res.ok) return;
+      const data = (await res.json()) as Conversation[];
+      if (requestId !== loadConversationsRequestId) return;
+      set({ conversations: data });
+    } finally {
+      if (requestId === loadConversationsRequestId) {
+        set({ isLoadingConversations: false });
+      }
+    }
   },
 
-  async createConversation(title) {
+  async createConversation(title, knowledgePackId) {
     const state = get();
     const prevId = state.activeConversationId ?? state.previousConversationId;
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, previousId: prevId }),
+      body: JSON.stringify({ title, previousId: prevId, knowledgePackId: knowledgePackId ?? undefined }),
     });
     if (!res.ok) throw new Error('Failed to create conversation');
     const convo = (await res.json()) as Conversation;

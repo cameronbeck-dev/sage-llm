@@ -20,6 +20,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
 - **Soft Monthly Budget** — Optional cap with a single in-chat whisper warning when crossed
 - **Conversation Import** — Import chat history from ChatGPT (.zip) and Claude.ai (.json) exports; conversations are archived and used to seed structured memory
+- **Knowledge Packs** — Named document collections per user. Upload PDFs, Markdown, text, DOCX, CSV, JSON, and source-code files (up to 100 MB each); Sage indexes them with full-text search (FTS via Postgres GIN, pgvector planned). Attach packs to any conversation for automatic RAG context injection (top-8 chunks, ~3000-token cap). Open a **Pack Builder** conversation to let Sage interview you about a pack — after each turn it automatically extracts and indexes new facts.
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---
@@ -246,6 +247,8 @@ The page sniffs the file's content rather than trusting the extension, so a Clau
 **Limits:** 500 MB per file, 20 imports per day per user.
 
 **Re-uploads:** the same file (matched on SHA-256) won't double-import — successful or in-progress rows short-circuit and return the existing import id. **Failed imports** are dropped on re-upload so you can retry after fixing whatever went wrong.
+
+**Sidebar:** imported conversations show an "imported" badge in the sidebar. All conversations are grouped by recency (Today, Yesterday, Previous 7 days, Previous 30 days, Older), and the 3-dot menu shows the last-updated timestamp.
 
 ---
 

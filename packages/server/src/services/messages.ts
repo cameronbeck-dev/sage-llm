@@ -5,7 +5,7 @@ function rowToMessage(row: Record<string, unknown>): Message {
   return {
     id: row.id as string,
     conversationId: row.conversation_id as string,
-    role: row.role as 'user' | 'assistant' | 'system' | 'whisper',
+    role: row.role as 'user' | 'assistant' | 'system' | 'whisper' | 'system_internal',
     content: row.content as ContentBlock[],
     provider: row.provider as string | undefined,
     model: row.model as string | undefined,

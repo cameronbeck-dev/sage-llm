@@ -3,6 +3,7 @@ import { getBoss, closeBoss } from './boss.js';
 import { NOOP_JOB, noopHandler } from './handlers/noop.js';
 import { IMPORT_PARSE_JOB, importParseHandler } from './handlers/import-parse.js';
 import { IMPORT_COMMIT_JOB, importCommitHandler } from './handlers/import-commit.js';
+import { KNOWLEDGE_PARSE_JOB, knowledgeParseHandler } from './handlers/knowledge-parse.js';
 import { logger } from '../logger.js';
 
 async function main() {
@@ -14,6 +15,8 @@ async function main() {
   await boss.work(IMPORT_PARSE_JOB, importParseHandler);
   await boss.createQueue(IMPORT_COMMIT_JOB);
   await boss.work(IMPORT_COMMIT_JOB, importCommitHandler);
+  await boss.createQueue(KNOWLEDGE_PARSE_JOB);
+  await boss.work(KNOWLEDGE_PARSE_JOB, knowledgeParseHandler);
   logger.info('worker started');
 
   async function shutdown() {
