@@ -79,8 +79,7 @@ function EntriesTab() {
   return (
     <>
       {entries.map(entry => (
-        <div key={entry.id} className="memory-entry pixel-border">
-          <div className="memory-entry__key">{entry.key}</div>
+        <div key={entry.id} className="memory-entry">
           {editingId === entry.id ? (
             <>
               <textarea
@@ -98,24 +97,26 @@ function EntriesTab() {
           ) : (
             <>
               <div className="memory-entry__body">{entry.body}</div>
-              <div className="memory-entry__meta">
-                <span className="memory-entry__type">{entry.type}</span>
-                {' · '}
-                {new Date(entry.updatedAt).toLocaleString()}
+              <div className="memory-entry__footer">
+                <div className="memory-entry__meta">
+                  <span className="memory-entry__type">{entry.type}</span>
+                  {' · '}
+                  {new Date(entry.updatedAt).toLocaleString()}
+                </div>
+                {confirmForgetId === entry.id ? (
+                  <div className="memory-entry__actions">
+                    <span className="settings-info">Forget?</span>
+                    <button className="btn btn--sm" style={{ color: 'var(--danger)' }} onClick={() => forgetEntry(entry.id)}>Yes</button>
+                    <button className="btn btn--sm" onClick={() => setConfirmForgetId(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <div className="memory-entry__actions">
+                    <button className="btn btn--sm" onClick={() => startEdit(entry)}>Edit</button>
+                    <button className="btn btn--sm" onClick={() => setConfirmForgetId(entry.id)}>Forget</button>
+                    <button className="btn btn--sm" onClick={() => setWhyEntryId(entry.id)}>Why?</button>
+                  </div>
+                )}
               </div>
-              {confirmForgetId === entry.id ? (
-                <div className="memory-entry__actions">
-                  <span className="settings-info">Forget this memory?</span>
-                  <button className="btn btn--sm" style={{ color: 'var(--danger)' }} onClick={() => forgetEntry(entry.id)}>Yes</button>
-                  <button className="btn btn--sm" onClick={() => setConfirmForgetId(null)}>Cancel</button>
-                </div>
-              ) : (
-                <div className="memory-entry__actions">
-                  <button className="btn btn--sm" onClick={() => startEdit(entry)}>Edit</button>
-                  <button className="btn btn--sm" onClick={() => setConfirmForgetId(entry.id)}>Forget</button>
-                  <button className="btn btn--sm" onClick={() => setWhyEntryId(entry.id)}>Why?</button>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -167,15 +168,17 @@ function SummariesTab() {
   return (
     <>
       {summaries.map(summary => (
-        <div key={summary.id} className="memory-summary pixel-border">
+        <div key={summary.id} className="memory-summary">
           <div className="memory-summary__title">{summary.conversationTitle}</div>
           <div className="memory-summary__body">{summary.summary}</div>
-          <div className="settings-info" style={{ marginBottom: 8 }}>
-            {summary.lastMessageAt
-              ? new Date(summary.lastMessageAt).toLocaleString()
-              : new Date(summary.createdAt).toLocaleString()}
+          <div className="memory-summary__footer">
+            <span className="settings-info">
+              {summary.lastMessageAt
+                ? new Date(summary.lastMessageAt).toLocaleString()
+                : new Date(summary.createdAt).toLocaleString()}
+            </span>
+            <button className="btn btn--sm" onClick={() => deleteSummary(summary.id)}>Delete</button>
           </div>
-          <button className="btn btn--sm" onClick={() => deleteSummary(summary.id)}>Delete</button>
         </div>
       ))}
     </>
