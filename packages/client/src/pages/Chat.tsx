@@ -6,6 +6,8 @@ import { useKnowledgeStore } from '../state/knowledgeStore.js';
 import { useSageState } from '../hooks/useSageState.js';
 import { streamChat } from '../api/chat.js';
 import MessageBubble from '../components/chat/MessageBubble.js';
+import WhisperActions from '../components/chat/WhisperActions.js';
+import PendingExtractionIndicators from '../components/chat/PendingExtractionIndicators.js';
 import ModelPicker from '../components/chat/ModelPicker.js';
 import UserMenu from '../components/chat/UserMenu.js';
 import SageAvatar from '../components/sage/SageAvatar.js';
@@ -44,6 +46,7 @@ export default function Chat() {
     thinkingMessageId,
     showArchived,
     isLoadingConversations,
+    pendingExtractions,
     setShowArchived,
     loadConversations,
     createConversation,
@@ -56,6 +59,11 @@ export default function Chat() {
     appendThinkingDelta,
     setLastTurnCost,
     updateConversationTitle,
+    updateMessage,
+    setExtractionStarted,
+    appendExtractionDestinations,
+    clearExtractionDestination,
+    clearAllExtractions,
   } = useConversationStore();
 
   const { sageState, sageMessage, startStreaming, stopStreaming, onStreamError } = useSageState();
@@ -341,6 +349,29 @@ export default function Chat() {
             if (conversationId && chunk.title) {
               useConversationStore.getState().updateConversationTitle(conversationId, chunk.title);
             }
+          } else if (chunk.type === 'extraction_progress') {
+            if (chunk.stage === 'started') {
+              setExtractionStarted(conversationId, chunk.label ?? 'Checking for new memories');
+            } else if (chunk.stage === 'destinations_known') {
+              appendExtractionDestinations(conversationId, chunk.indicators ?? []);
+            } else if (chunk.stage === 'destination_complete') {
+              clearExtractionDestination(conversationId, chunk.completedId!);
+              const msgRes = await fetch(`/api/conversations/${conversationId}`);
+              if (msgRes.ok) {
+                const data = await msgRes.json() as Conversation & { messages: Message[] };
+                useConversationStore.setState((s) => {
+                  const responseTimeById = new Map(s.activeMessages.filter(m => m.responseTimeMs != null).map(m => [m.id, m.responseTimeMs!]));
+                  return {
+                    activeMessages: data.messages.map(m => {
+                      const preservedTime = responseTimeById.get(m.id);
+                      return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
+                    }),
+                  };
+                });
+              }
+            } else if (chunk.stage === 'finished') {
+              clearAllExtractions(conversationId);
+            }
           } else if (chunk.type === 'done' || chunk.type === 'error') {
             if (chunk.type === 'error' && chunk.error) {
               onStreamError();
@@ -382,6 +413,7 @@ export default function Chat() {
         if ((err as Error).name === 'AbortError') {
           stopStreaming();
           finalizeStreaming();
+          clearAllExtractions(conversationId);
         } else {
           onStreamError();
           setStreamingError(`Error: ${(err as Error).message}`);
@@ -531,10 +563,7 @@ export default function Chat() {
               <line x1="3" y1="14" x2="15" y2="14"/>
             </svg>
           </button>
-          {activeConversation?.knowledgePackId && (
-            <span className="chat-sidebar__item-imported-pill" style={{ marginLeft: 8 }}>Pack Builder</span>
-          )}
-          {activeConversationId && !activeConversation?.knowledgePackId && (
+          {activeConversationId && (
             <div style={{ position: 'relative', marginLeft: 'auto' }}>
               <button className="btn btn--sm" onClick={() => setPackPickerOpen(o => !o)}>
                 Packs{activeConversation?.attachedPackIds?.length ? ` (${activeConversation.attachedPackIds.length})` : ''}
@@ -599,25 +628,34 @@ export default function Chat() {
                   if (m.role === 'assistant' && typeof m.costUsd === 'number') running += m.costUsd;
                   return { msg: m, sessionRunningUsd: running };
                 });
-              return enriched.map(({ msg, sessionRunningUsd }) => {
-                const text = msg.content
-                  .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-                  .map((b) => b.text)
-                  .join('');
-                return (
-                  <MessageBubble
-                    key={msg.id}
-                    role={msg.role as 'user' | 'assistant' | 'whisper'}
-                    content={text}
-                    isStreaming={msg.id === thinkingMessageId && isStreaming}
-                    isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}
-                    thinking={msg.thinking}
-                    costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
-                    sessionRunningUsd={msg.role === 'assistant' && msg.costUsd != null ? sessionRunningUsd : undefined}
-                    responseTimeMs={msg.role === 'assistant' ? msg.responseTimeMs : undefined}
-                  />
-                );
-              });
+              return (
+                <>
+                  {enriched.map(({ msg, sessionRunningUsd }) => {
+                    const text = msg.content
+                      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+                      .map((b) => b.text)
+                      .join('');
+                    return (
+                      <div key={msg.id}>
+                        <MessageBubble
+                          role={msg.role as 'user' | 'assistant' | 'whisper'}
+                          content={text}
+                          isStreaming={msg.id === thinkingMessageId && isStreaming}
+                          isError={msg.id === thinkingMessageId && !isStreaming && text.startsWith('Error:')}
+                          thinking={msg.thinking}
+                          costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
+                          sessionRunningUsd={msg.role === 'assistant' && msg.costUsd != null ? sessionRunningUsd : undefined}
+                          responseTimeMs={msg.role === 'assistant' ? msg.responseTimeMs : undefined}
+                        />
+                        {msg.role === 'whisper' && msg.whisperActions && (
+                          <WhisperActions message={msg} onUpdate={updateMessage} />
+                        )}
+                      </div>
+                    );
+                  })}
+                  <PendingExtractionIndicators indicators={pendingExtractions[activeConversationId ?? ''] ?? []} />
+                </>
+              );
             })()
           )}
         </div>

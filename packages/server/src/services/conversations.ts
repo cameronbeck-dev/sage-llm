@@ -1,7 +1,14 @@
 import { getPool } from '../db/pool.js';
-import type { Conversation } from '@sage/shared';
+import type { Conversation, AttachedPack } from '@sage/shared';
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
+  let attachedPacks: AttachedPack[] = [];
+  if (Array.isArray(row.attached_packs_json)) {
+    attachedPacks = (row.attached_packs_json as Array<{ pack_id: string; auto_extract: boolean } | null>)
+      .filter((r): r is { pack_id: string; auto_extract: boolean } => r != null && typeof r.pack_id === 'string')
+      .map(r => ({ packId: r.pack_id, autoExtract: r.auto_extract }));
+  }
+
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -12,10 +19,8 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
     preferredProvider: (row.preferred_provider as string | null) ?? null,
     preferredModel: (row.preferred_model as string | null) ?? null,
     importId: (row.import_id as string | null) ?? null,
-    knowledgePackId: (row.knowledge_pack_id as string | null) ?? null,
-    attachedPackIds: Array.isArray(row.attached_pack_ids)
-      ? (row.attached_pack_ids as string[]).filter(Boolean)
-      : [],
+    attachedPackIds: attachedPacks.map(p => p.packId),
+    attachedPacks,
   };
 }
 
@@ -28,7 +33,7 @@ export async function listConversations(
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT c.*,
-       array_agg(ckp.pack_id) FILTER (WHERE ckp.pack_id IS NOT NULL) AS attached_pack_ids
+       jsonb_agg(jsonb_build_object('pack_id', ckp.pack_id, 'auto_extract', ckp.auto_extract)) FILTER (WHERE ckp.pack_id IS NOT NULL) AS attached_packs_json
      FROM conversations c
      LEFT JOIN conversation_knowledge_packs ckp ON ckp.conversation_id = c.id
      WHERE c.user_id = $1 ${includeArchived ? '' : 'AND c.archived = false'}
@@ -47,7 +52,7 @@ export async function getConversation(
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT c.*,
-       array_agg(ckp.pack_id) FILTER (WHERE ckp.pack_id IS NOT NULL) AS attached_pack_ids
+       jsonb_agg(jsonb_build_object('pack_id', ckp.pack_id, 'auto_extract', ckp.auto_extract)) FILTER (WHERE ckp.pack_id IS NOT NULL) AS attached_packs_json
      FROM conversations c
      LEFT JOIN conversation_knowledge_packs ckp ON ckp.conversation_id = c.id
      WHERE c.id = $1 AND c.user_id = $2
@@ -61,14 +66,31 @@ export async function getConversation(
 export async function createConversation(
   userId: string,
   title = 'New conversation',
-  knowledgePackId?: string | null
+  seedFromPackId?: string | null
 ): Promise<string> {
   const pool = getPool();
   const { rows } = await pool.query<{ id: string }>(
-    'INSERT INTO conversations (user_id, title, knowledge_pack_id) VALUES ($1, $2, $3) RETURNING id',
-    [userId, title, knowledgePackId ?? null]
+    'INSERT INTO conversations (user_id, title) VALUES ($1, $2) RETURNING id',
+    [userId, title]
   );
-  return rows[0].id;
+  const conversationId = rows[0].id;
+
+  if (seedFromPackId) {
+    const { attachPackToConversation } = await import('./knowledge.js');
+    await attachPackToConversation(userId, conversationId, seedFromPackId, { autoExtract: true });
+
+    const { buildPackOpener } = await import('../prompts/pack-opener.js');
+    const { createMessage } = await import('./messages.js');
+    const opener = await buildPackOpener(userId, seedFromPackId, conversationId).catch(err => {
+      console.error('[opener] failed', err);
+      return null;
+    });
+    if (opener) {
+      await createMessage(conversationId, 'assistant', [{ type: 'text', text: opener }]);
+    }
+  }
+
+  return conversationId;
 }
 
 export async function updateConversation(
@@ -79,7 +101,6 @@ export async function updateConversation(
     archived?: boolean;
     preferredProvider?: string | null;
     preferredModel?: string | null;
-    knowledgePackId?: string | null;
   }
 ): Promise<void> {
   const pool = getPool();
@@ -102,10 +123,6 @@ export async function updateConversation(
   if (updates.preferredModel !== undefined) {
     fields.push(`preferred_model = $${idx++}`);
     values.push(updates.preferredModel);
-  }
-  if (updates.knowledgePackId !== undefined) {
-    fields.push(`knowledge_pack_id = $${idx++}`);
-    values.push(updates.knowledgePackId);
   }
   if (fields.length === 0) return;
 

@@ -1,7 +1,7 @@
 import { getPool } from '../db/pool.js';
-import type { Message, ContentBlock } from '@sage/shared';
+import type { Message, ContentBlock, WhisperAction } from '@sage/shared';
 
-function rowToMessage(row: Record<string, unknown>): Message {
+export function rowToMessage(row: Record<string, unknown>): Message {
   return {
     id: row.id as string,
     conversationId: row.conversation_id as string,
@@ -19,6 +19,7 @@ function rowToMessage(row: Record<string, unknown>): Message {
         : undefined,
     thinking: row.thinking as string ?? undefined,
     createdAt: (row.created_at as Date).toISOString(),
+    whisperActions: row.whisper_actions != null ? (row.whisper_actions as WhisperAction[]) : undefined,
   };
 }
 
@@ -46,13 +47,14 @@ export async function createMessage(
   model?: string,
   usage?: { inputTokens: number; outputTokens: number },
   costUsd?: number,
-  thinking?: string
+  thinking?: string,
+  whisperActions?: WhisperAction[]
 ): Promise<string> {
   const pool = getPool();
   const { rows } = await pool.query<{ id: string }>(
     `INSERT INTO messages
-       (conversation_id, role, content, provider, model, prompt_tokens, completion_tokens, cost_cents, cost_usd, thinking)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       (conversation_id, role, content, provider, model, prompt_tokens, completion_tokens, cost_cents, cost_usd, thinking, whisper_actions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING id`,
     [
       conversationId,
@@ -65,6 +67,7 @@ export async function createMessage(
       costUsd != null ? Math.round(costUsd * 100) : null,
       costUsd ?? null,
       thinking ?? null,
+      whisperActions != null ? JSON.stringify(whisperActions) : null,
     ]
   );
 
@@ -74,4 +77,39 @@ export async function createMessage(
   );
 
   return rows[0].id;
+}
+
+export async function getMessage(messageId: string, userId: string): Promise<Message | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT m.* FROM messages m
+     JOIN conversations c ON c.id = m.conversation_id
+     WHERE m.id = $1 AND c.user_id = $2`,
+    [messageId, userId]
+  );
+  return rows.length > 0 ? rowToMessage(rows[0]) : null;
+}
+
+export async function updateMessageWhisperActions(
+  messageId: string,
+  whisperActions: WhisperAction[] | null
+): Promise<Message | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `UPDATE messages SET whisper_actions = $1 WHERE id = $2 RETURNING *`,
+    [whisperActions != null ? JSON.stringify(whisperActions) : null, messageId]
+  );
+  return rows.length > 0 ? rowToMessage(rows[0]) : null;
+}
+
+export async function updateMessageContent(
+  messageId: string,
+  content: ContentBlock[]
+): Promise<Message | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `UPDATE messages SET content = $1 WHERE id = $2 RETURNING *`,
+    [JSON.stringify(content), messageId]
+  );
+  return rows.length > 0 ? rowToMessage(rows[0]) : null;
 }

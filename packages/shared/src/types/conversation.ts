@@ -1,3 +1,8 @@
+export interface AttachedPack {
+  packId: string;
+  autoExtract: boolean;
+}
+
 export interface Conversation {
   id: string;
   userId: string;
@@ -8,6 +13,7 @@ export interface Conversation {
   preferredProvider?: string | null;
   preferredModel?: string | null;
   importId?: string | null;
-  knowledgePackId?: string | null;
   attachedPackIds?: string[];
+  attachedPacks?: AttachedPack[];
+  seedFromPackId?: string;
 }

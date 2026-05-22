@@ -5,6 +5,7 @@ export * from './agent.js';
 export * from './user.js';
 export * from './usage.js';
 export * from './knowledge.js';
+export * from './whisper.js';
 
 // Memory system types
 export interface MemoryDoc {
@@ -70,3 +71,16 @@ export type MemoryOp =
   | { op: 'add'; key: string; body: string; type?: MemoryEntry['type']; summary: string }
   | { op: 'update'; entryId: string; body: string; summary: string }
   | { op: 'forget'; entryId: string; summary: string };
+
+export interface ExtractionIndicator {
+  id: string;
+  label: string;
+}
+
+export interface ExtractionProgressChunk {
+  type: 'extraction_progress';
+  stage: 'started' | 'destinations_known' | 'destination_complete' | 'finished';
+  label?: string;
+  indicators?: ExtractionIndicator[];
+  completedId?: string;
+}

@@ -4,15 +4,15 @@ import { listMessages, createMessage } from './messages.js';
 import { getUserSettings, updateUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
 import { createWhisper } from './docs.js';
-import { reviewMemory, renderMemoryMarkdown, renderSummariesBlock, getExistingSummaryConversationIds, summarizeConversation } from './memory.js';
+import { renderMemoryMarkdown, renderSummariesBlock, getExistingSummaryConversationIds, summarizeConversation } from './memory.js';
 import { getCurrentPeriodSpendCents } from './usage.js';
-import { buildKnowledgeBuilderPrompt } from '../prompts/knowledge-builder.js';
-import { searchChunks, getPack, getAttachedPackIds } from './knowledge.js';
-import { reviewKnowledgePack } from './knowledge-memory.js';
+import { searchChunks, getAttachedPackIds, listPacks } from './knowledge.js';
+import { extractAfterTurn } from './extraction.js';
+import { buildPackLiteracyBlock } from '../prompts/pack-literacy.js';
 import type { ContentBlock } from '@sage/shared';
 
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete' | 'extraction_progress';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
@@ -20,6 +20,10 @@ export interface SSEChunk {
   whisperText?: string;
   title?: string;
   costUsd?: number;
+  stage?: 'started' | 'destinations_known' | 'destination_complete' | 'finished';
+  label?: string;
+  indicators?: Array<{ id: string; label: string }>;
+  completedId?: string;
 }
 
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
@@ -69,44 +73,37 @@ export async function* chatStream(
   const { getConversation, updateConversation } = await import('./conversations.js');
   const convo = await getConversation(userId, conversationId);
 
+  const userPacks = await listPacks(userId);
+
   const systemParts: string[] = [];
 
-  if (convo?.knowledgePackId) {
-    const pack = await getPack(userId, convo.knowledgePackId);
-    if (pack) {
-      systemParts.push(buildKnowledgeBuilderPrompt(pack.name, pack.description));
-    } else if (agentContent) {
-      systemParts.push(agentContent);
-    }
-  } else {
-    if (agentContent) systemParts.push(agentContent);
-  }
+  if (agentContent) systemParts.push(agentContent);
+
+  systemParts.push(buildPackLiteracyBlock(userPacks));
 
   if (memoryContent) systemParts.push(memoryContent);
   if (summariesBlock) systemParts.push(summariesBlock);
 
-  if (!convo?.knowledgePackId) {
-    const attachedPackIds = convo?.attachedPackIds && convo.attachedPackIds.length > 0
-      ? convo.attachedPackIds
-      : await getAttachedPackIds(conversationId);
+  const attachedPackIds = convo?.attachedPackIds && convo.attachedPackIds.length > 0
+    ? convo.attachedPackIds
+    : await getAttachedPackIds(conversationId);
 
-    if (attachedPackIds.length > 0) {
-      const chunks = await searchChunks(attachedPackIds, userMessage, 8);
-      if (chunks.length > 0) {
-        const MAX_CHARS = 12000;
-        let used = 0;
-        const kept: typeof chunks = [];
-        for (const chunk of chunks) {
-          if (used + chunk.text.length > MAX_CHARS) break;
-          kept.push(chunk);
-          used += chunk.text.length;
-        }
-        if (kept.length > 0) {
-          const contextBlock = kept
-            .map(c => `[Source: ${c.filename}, chunk #${c.chunkIndex}]\n${c.text}`)
-            .join('\n\n');
-          systemParts.push(`Relevant context from knowledge packs:\n\n${contextBlock}`);
-        }
+  if (attachedPackIds.length > 0) {
+    const chunks = await searchChunks(attachedPackIds, userMessage, 8);
+    if (chunks.length > 0) {
+      const MAX_CHARS = 12000;
+      let used = 0;
+      const kept: typeof chunks = [];
+      for (const chunk of chunks) {
+        if (used + chunk.text.length > MAX_CHARS) break;
+        kept.push(chunk);
+        used += chunk.text.length;
+      }
+      if (kept.length > 0) {
+        const contextBlock = kept
+          .map(c => `[Source: ${c.filename}, chunk #${c.chunkIndex}]\n${c.text}`)
+          .join('\n\n');
+        systemParts.push(`Relevant context from knowledge packs:\n\n${contextBlock}`);
       }
     }
   }
@@ -115,7 +112,7 @@ export async function* chatStream(
   const system = systemParts.join('\n\n---\n\n');
 
   const userContent: ContentBlock[] = [{ type: 'text', text: userMessage }];
-  await createMessage(conversationId, 'user', userContent);
+  const userMessageId = await createMessage(conversationId, 'user', userContent);
 
   // Resolve provider/model: per-request override > conversation preferred > user settings
   let resolvedProviderId = settings.activeProvider;
@@ -215,7 +212,7 @@ export async function* chatStream(
     costUsd = provider.estimateCost(model, finalUsage);
   }
 
-  await createMessage(
+  const assistantMessageId = await createMessage(
     conversationId,
     'assistant',
     [{ type: 'text', text: fullText }],
@@ -231,35 +228,25 @@ export async function* chatStream(
   // Budget check — warn once per calendar month when budget is crossed
   yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
 
-  // Memory review pass — must complete before 'done' is sent to client
-  const whisperTextsFromMemory: string[] = [];
-  await reviewMemory(userId, conversationId)
-    .then(async ({ whisperLines }) => {
-      for (const line of whisperLines) {
-        await createWhisper(conversationId, `Memory: ${line}`);
-        whisperTextsFromMemory.push(`Memory: ${line}`);
-      }
-    })
-    .catch((err) => {
-      console.error('[memory] review pass failed', err);
-    });
-
-  for (const whisperText of whisperTextsFromMemory) {
-    yield { type: 'whisper', whisperText };
+  let destinationCompleteCount = 0;
+  for await (const chunk of extractAfterTurn(userId, conversationId, userMessageId, assistantMessageId)) {
+    if (chunk.stage === 'destination_complete') destinationCompleteCount++;
+    yield chunk;
   }
 
-  if (convo?.knowledgePackId) {
-    await reviewKnowledgePack(userId, conversationId, convo.knowledgePackId).catch((err) => {
-      console.error('[knowledge] extract failed', err);
-    });
+  // Signal client to refetch messages (picks up any whispers created during extraction).
+  // Skipped when extraction emitted destination_complete events — each of those already
+  // triggers a refetch in the client chunk handler.
+  if (destinationCompleteCount === 0) {
+    yield { type: 'whisper', whisperText: '' };
   }
 
   // If this is the first message of a new conversation, derive title from user message
   // and update the conversation. Also send title to client for sidebar update.
   if (history.length === 0 && userMessage.trim()) {
     const titleFromMsg = userMessage.trim().slice(0, 80);
-    const { updateConversation } = await import('./conversations.js');
-    await updateConversation(userId, conversationId, { title: titleFromMsg });
+    const { updateConversation: updateConvo } = await import('./conversations.js');
+    await updateConvo(userId, conversationId, { title: titleFromMsg });
     yield { type: 'title', title: titleFromMsg };
   }
 

@@ -303,9 +303,10 @@ export async function applyMemoryOps(
   ops: MemoryOp[],
   sourceConversationId: string,
   sourceMessageId: string | null
-): Promise<{ whisperLines: string[] }> {
+): Promise<{ whisperLines: string[]; applied: Array<{ op: 'add' | 'update' | 'forget'; entryId: string }> }> {
   const pool = getPool();
   const whisperLines: string[] = [];
+  const applied: Array<{ op: 'add' | 'update' | 'forget'; entryId: string }> = [];
 
   for (const op of ops) {
     try {
@@ -323,6 +324,7 @@ export async function applyMemoryOps(
           [newId, op.body, op.summary]
         );
         whisperLines.push(op.summary);
+        applied.push({ op: 'add', entryId: newId });
       } else if (op.op === 'update') {
         const { rows: checkRows } = await pool.query(
           `SELECT id FROM memory_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
@@ -339,6 +341,7 @@ export async function applyMemoryOps(
           [sourceConversationId, sourceMessageId, op.entryId]
         );
         whisperLines.push(op.summary);
+        applied.push({ op: 'update', entryId: op.entryId });
       } else if (op.op === 'forget') {
         const { rows: checkRows } = await pool.query(
           `SELECT id FROM memory_entries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
@@ -350,13 +353,58 @@ export async function applyMemoryOps(
         }
         await softDeleteMemoryEntry(userId, op.entryId, 'llm', op.summary);
         whisperLines.push(op.summary);
+        applied.push({ op: 'forget', entryId: op.entryId });
       }
     } catch (err) {
       console.error('[applyMemoryOps] op failed, skipping:', op, err);
     }
   }
 
-  return { whisperLines };
+  return { whisperLines, applied };
+}
+
+// ─── Per-turn meta extraction (reusable by extraction pipeline) ───────────────
+
+export async function extractMetaFromTurn(
+  userId: string,
+  userMsg: string,
+  assistantMsg: string
+): Promise<MemoryOp[]> {
+  const entries = await listMemoryEntries(userId);
+
+  const recentEntries = [...entries]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 30);
+
+  const entriesList = recentEntries.length > 0
+    ? recentEntries.map(e => `${e.id} | ${e.key} | ${e.body}`).join('\n')
+    : '(none)';
+
+  const prompt = `You are reviewing a single conversation exchange to decide whether to add, update, or forget memories.
+
+Current memory entries (id | key | body, most recent 30):
+${entriesList}
+
+Exchange:
+user: ${userMsg}
+assistant: ${assistantMsg}
+
+Output ONLY a JSON array of operations, no other text. Each element:
+{ "op": "add" | "update" | "forget", "entryId"?: "uuid", "key"?: "string",
+  "body"?: "string", "type"?: "user|feedback|project|reference|other", "summary": "one-sentence rationale" }
+
+- "add": include key, body, type, summary. Only add if information is new, persistent, and useful.
+- "update": include entryId, body, summary. Only when an existing entry needs material change.
+- "forget": include entryId, summary. Only when an entry is now wrong or useless.
+- If nothing should change, output: []`;
+
+  const text = await chatSync(userId, prompt);
+  const ops = extractJson<MemoryOp[]>(text);
+  if (!Array.isArray(ops)) {
+    console.error('[extractMetaFromTurn] failed to parse LLM output:', text.slice(0, 500));
+    return [];
+  }
+  return ops;
 }
 
 // ─── Review memory ────────────────────────────────────────────────────────────
@@ -364,7 +412,7 @@ export async function applyMemoryOps(
 export async function reviewMemory(
   userId: string,
   conversationId: string
-): Promise<{ whisperLines: string[] }> {
+): Promise<{ whisperLines: string[]; applied: Array<{ op: 'add' | 'update' | 'forget'; entryId: string }> }> {
   const [history, entries] = await Promise.all([
     listMessages(conversationId, 1000),
     listMemoryEntries(userId),
@@ -421,7 +469,7 @@ Output ONLY a JSON array of operations, no other text. Each element:
     const ops = extractJson<MemoryOp[]>(text);
     if (!Array.isArray(ops)) {
       console.error('[reviewMemory] failed to parse LLM output as array:', text.slice(0, 500));
-      return { whisperLines: [] };
+      return { whisperLines: [], applied: [] };
     }
 
     const userMsgs = history.filter(m => m.role === 'user' || m.role === 'assistant');
@@ -432,7 +480,7 @@ Output ONLY a JSON array of operations, no other text. Each element:
     return applyMemoryOps(userId, ops, conversationId, sourceMessageId);
   } catch (err) {
     console.error('[reviewMemory] failed:', err);
-    return { whisperLines: [] };
+    return { whisperLines: [], applied: [] };
   }
 }
 

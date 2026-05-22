@@ -1,5 +1,5 @@
 export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete';
+  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete' | 'extraction_progress';
   delta?: string;
   usage?: { inputTokens: number; outputTokens: number };
   error?: string;
@@ -7,6 +7,10 @@ export interface SSEChunk {
   whisperText?: string;
   title?: string;
   costUsd?: number;
+  stage?: 'started' | 'destinations_known' | 'destination_complete' | 'finished';
+  label?: string;
+  indicators?: Array<{ id: string; label: string }>;
+  completedId?: string;
 }
 
 export async function* streamChat(

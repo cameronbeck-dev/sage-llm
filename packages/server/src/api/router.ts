@@ -10,6 +10,7 @@ import { usageRouter } from './usage.routes.js';
 import { memoryRouter } from './memory.routes.js';
 import { importsRouter } from './imports.routes.js';
 import { knowledgeRouter } from './knowledge.routes.js';
+import { whispersRouter } from './whispers.routes.js';
 
 export const apiRouter = Router();
 
@@ -24,6 +25,7 @@ apiRouter.use('/usage', usageRouter);
 apiRouter.use('/memory', memoryRouter);
 apiRouter.use('/imports', importsRouter);
 apiRouter.use('/knowledge', knowledgeRouter);
+apiRouter.use('/whispers', whispersRouter);
 
 apiRouter.get('/health', (_req, res) => {
   res.json({ status: 'ok', name: 'sage' });

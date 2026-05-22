@@ -1212,6 +1212,36 @@ details[open] > .message-bubble__thinking-summary::before {
   line-height: 1.5;
 }
 
+/* Extraction progress indicators — transient placeholders while saves are in-flight */
+.extraction-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  margin-top: 4px;
+}
+
+.extraction-indicator__spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--text-muted);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: extraction-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes extraction-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Whisper messages — ambient memory updates */
 .message-bubble--whisper {
   justify-content: flex-start;
@@ -1225,6 +1255,48 @@ details[open] > .message-bubble__thinking-summary::before {
   background: transparent;
   border-left: 2px solid var(--border-dim);
   padding-left: 8px;
+}
+
+/* Structured whisper actions — suggestion buttons rendered below whisper bubbles */
+.whisper-actions {
+  margin: 2px 0 6px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-dim);
+}
+
+.whisper-actions__prompt {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.whisper-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.whisper-actions__button {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+  font-family: var(--font-body);
+}
+
+.whisper-actions__button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.whisper-actions__button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* Cost footer — quiet, whisper-like, sits under assistant bubbles */

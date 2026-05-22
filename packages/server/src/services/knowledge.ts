@@ -180,19 +180,21 @@ export async function searchChunks(
 export async function attachPackToConversation(
   userId: string,
   conversationId: string,
-  packId: string
+  packId: string,
+  opts?: { autoExtract?: boolean }
 ): Promise<void> {
   const pool = getPool();
+  const autoExtract = opts?.autoExtract ?? false;
   await pool.query(
-    `INSERT INTO conversation_knowledge_packs (conversation_id, pack_id)
-     SELECT $1, $2
+    `INSERT INTO conversation_knowledge_packs (conversation_id, pack_id, auto_extract)
+     SELECT $1, $2, $4
      WHERE EXISTS (
        SELECT 1 FROM conversations WHERE id = $1 AND user_id = $3
      ) AND EXISTS (
        SELECT 1 FROM knowledge_packs WHERE id = $2 AND user_id = $3
      )
      ON CONFLICT DO NOTHING`,
-    [conversationId, packId, userId]
+    [conversationId, packId, userId, autoExtract]
   );
 }
 

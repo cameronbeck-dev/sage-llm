@@ -24,9 +24,12 @@ conversationsRouter.get('/', requireAuth, async (req, res, next) => {
 
 conversationsRouter.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { title, knowledgePackId } = req.body as { title?: string; knowledgePackId?: string | null };
-    const id = await createConversation(req.session!.userId!, title ?? 'New conversation', knowledgePackId);
-    const convo = await getConversation(req.session!.userId!, id);
+    const userId = req.session!.userId!;
+    const { title, seedFromPackId } = req.body as { title?: string; seedFromPackId?: string };
+
+    const id = await createConversation(userId, title ?? 'New conversation', seedFromPackId);
+
+    const convo = await getConversation(userId, id);
     res.status(201).json(convo);
   } catch (err) {
     next(err);

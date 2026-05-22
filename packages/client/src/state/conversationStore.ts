@@ -16,9 +16,10 @@ interface ConversationState {
   lastTurnCostUsd: number | null;
   showArchived: boolean;
   isLoadingConversations: boolean;
+  pendingExtractions: Record<string, Array<{ id: string; label: string }>>;
   setShowArchived: (value: boolean) => void;
   loadConversations: () => Promise<void>;
-  createConversation: (title?: string, knowledgePackId?: string | null) => Promise<string>;
+  createConversation: (title?: string, seedFromPackId?: string) => Promise<string>;
   setActive: (id: string | null) => Promise<void>;
   setThinkingMessage: (id: string) => void;
   updateThinkingMessage: (delta: string) => void;
@@ -32,6 +33,11 @@ interface ConversationState {
   updateConversationTitle: (id: string, title: string) => Promise<void>;
   setLastTurnCost: (value: number | null) => void;
   setPreferredModel: (provider: string, model: string) => Promise<void>;
+  updateMessage: (message: Message) => void;
+  setExtractionStarted: (conversationId: string, label: string) => void;
+  appendExtractionDestinations: (conversationId: string, indicators: Array<{ id: string; label: string }>) => void;
+  clearExtractionDestination: (conversationId: string, id: string) => void;
+  clearAllExtractions: (conversationId: string) => void;
 }
 
 let loadConversationsRequestId = 0;
@@ -50,6 +56,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   lastTurnCostUsd: null,
   showArchived: false,
   isLoadingConversations: false,
+  pendingExtractions: {},
 
   setShowArchived(value: boolean) {
     set({ showArchived: value });
@@ -74,13 +81,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
 
-  async createConversation(title, knowledgePackId) {
+  async createConversation(title, seedFromPackId) {
     const state = get();
     const prevId = state.activeConversationId ?? state.previousConversationId;
     const res = await fetch('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, previousId: prevId, knowledgePackId: knowledgePackId ?? undefined }),
+      body: JSON.stringify({
+        title,
+        previousId: prevId,
+        seedFromPackId: seedFromPackId ?? undefined,
+      }),
     });
     if (!res.ok) throw new Error('Failed to create conversation');
     const convo = (await res.json()) as Conversation;
@@ -213,6 +224,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set({ lastTurnCostUsd: value });
   },
 
+  updateMessage(message: Message) {
+    set((s) => ({
+      activeMessages: s.activeMessages.map((m) => m.id === message.id ? message : m),
+    }));
+  },
+
   async setPreferredModel(provider: string, model: string) {
     const { activeConversationId } = get();
     if (!activeConversationId) return;
@@ -233,5 +250,37 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ preferredProvider: provider, preferredModel: model }),
     });
+  },
+
+  setExtractionStarted(conversationId, label) {
+    set((s) => ({
+      pendingExtractions: { ...s.pendingExtractions, [conversationId]: [{ id: '__started__', label }] },
+    }));
+  },
+
+  // First call filters out the `__started__` sentinel; subsequent calls append. Never replaces existing entries.
+  appendExtractionDestinations(conversationId, indicators) {
+    set((s) => {
+      const existing = (s.pendingExtractions[conversationId] ?? []).filter(e => e.id !== '__started__');
+      return {
+        pendingExtractions: { ...s.pendingExtractions, [conversationId]: [...existing, ...indicators] },
+      };
+    });
+  },
+
+  clearExtractionDestination(conversationId, id) {
+    set((s) => {
+      const existing = s.pendingExtractions[conversationId];
+      if (!existing) return {};
+      return {
+        pendingExtractions: { ...s.pendingExtractions, [conversationId]: existing.filter(e => e.id !== id) },
+      };
+    });
+  },
+
+  clearAllExtractions(conversationId) {
+    set((s) => ({
+      pendingExtractions: { ...s.pendingExtractions, [conversationId]: [] },
+    }));
   },
 }));

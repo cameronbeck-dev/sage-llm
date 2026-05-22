@@ -20,7 +20,14 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - **Cost Tracking** — Per-message cost, per-conversation total, monthly usage dashboard with daily chart, provider/model breakdown, top conversations, and CSV export
 - **Soft Monthly Budget** — Optional cap with a single in-chat whisper warning when crossed
 - **Conversation Import** — Import chat history from ChatGPT (.zip) and Claude.ai (.json) exports; conversations are archived and used to seed structured memory
-- **Knowledge Packs** — Named document collections per user. Upload PDFs, Markdown, text, DOCX, CSV, JSON, and source-code files (up to 100 MB each); Sage indexes them with full-text search (FTS via Postgres GIN, pgvector planned). Attach packs to any conversation for automatic RAG context injection (top-8 chunks, ~3000-token cap). Open a **Pack Builder** conversation to let Sage interview you about a pack — after each turn it automatically extracts and indexes new facts.
+- **Knowledge Packs** — Named document collections per user. Upload PDFs, Markdown, text, DOCX, CSV, JSON, and source-code files (up to 100 MB each); Sage indexes them with full-text search (FTS via Postgres GIN, pgvector planned). How packs work:
+  - **Attached packs** (retrieval) — attach a pack via the chat header picker; Sage auto-injects relevant chunks into the system prompt for every turn (top-8 chunks, ~12,000-character cap).
+  - **Talk to Sage** (from `/knowledge`) — creates a conversation with the pack attached and `auto_extract: true`, plus a context-aware opener message. Subsequent turns silently extract to the pack without prompting.
+  - **Unified extraction pipeline** — after every assistant turn, a single triage LLM call classifies what (if anything) is worth capturing and where: general memory, an existing pack, or an "orphan" bucket for unclassified domain content. No bound-conversation concept remains.
+  - **Pack-literacy system block** — every conversation system prompt now includes a concise description of the user's packs and a reminder that capture is automatic, so Sage never claims to "save" or "file" content itself.
+  - **Per-pack dedup** — before inserting a chunk into an existing pack, Sage checks the 10 most-recent chunks for semantic overlap and skips if the candidate is a duplicate.
+  - **Orphan consolidation** — substantive notes that don't match any existing pack accumulate as "orphans". When ≥ 5 orphans share a topic, a consolidation LLM pass proposes a pack name and description, and a whisper offers to create the pack.
+  - **Whisper actions** — whispers carry `WhisperAction[]` buttons with snake_case `kind` values: `add_to_pack`, `create_pack`, `always_extract_to_pack`, `undo_extraction`, `dismiss`. Each button can be greyed out after use via `consumedAt`; other buttons remain clickable.
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---
@@ -203,6 +210,7 @@ All routes require authentication unless noted.
 | `POST` | `/api/account/export` | Download a ZIP of all user data (GDPR export) |
 | `DELETE` | `/api/account` | Permanently delete account and all associated data |
 | `GET` | `/api/health` | Health check (unauthenticated) |
+| `POST` | `/api/whispers/:messageId/actions/:index` | Invoke a whisper action by index (add_to_pack, create_pack, always_extract_to_pack, undo_extraction, dismiss); marks the action consumed and returns the updated message |
 
 ---
 
@@ -215,7 +223,8 @@ Migrations live in `packages/server/src/db/migrations/` and run on startup.
 - `users` — GitHub OAuth identity
 - `user_settings` — active provider, model, theme, `monthly_budget_cents`, `budget_warned_period` per user
 - `conversations` — archived flag, timestamps
-- `messages` — role, content (JSON), provider/model, token usage, cost
+- `messages` — role, content (JSON), provider/model, token usage, cost; `whisper_actions` (JSONB, nullable) holds `WhisperAction[]` directly (no wrapper object)
+- `orphan_extractions` — substantive extraction candidates that don't fit any existing pack; clustered by `suggested_topic`; consolidated at ≥ 5 per topic into a pack-creation whisper
 - `credentials` — encrypted API key envelopes per user per provider
 - `memory_docs` — per-user legacy blob files: AGENTS.md (still active), MEMORY.md, SUMMARIES.json (superseded by structured tables)
 - `memory_entries` — per-user structured memory facts; soft-deleted; tracks source conversation/message
@@ -256,7 +265,7 @@ The page sniffs the file's content rather than trusting the extension, so a Clau
 
 Memories are stored as structured rows in `memory_entries`, with edit history in `memory_entry_versions` and conversation summaries in `summary_entries`. The `/memory` page provides entry-level management: edit, forget, restore from history, and source-trace via the **Why?** drawer (links back to the originating conversation). Migration 016 performs the one-time data move from the previous blob storage (MEMORY.md / SUMMARIES.json).
 
-After every assistant response, a background pass reviews the conversation and issues `add`, `update`, or `forget` operations as a JSON array. Each applied operation emits a whisper visible inline in chat. When the summary count exceeds 20, the oldest summaries are soft-deleted and any persistent facts are migrated into memory entries via another LLM pass.
+After every assistant response, a unified triage LLM call (`services/extraction.ts`) classifies the last user/assistant exchange. If importance ≥ 3, extracted facts are routed to: general memory (autobiographical facts, preferences), an existing attached pack (with dedup check against the 10 most-recent chunks), or the orphan bucket. A heuristic pre-filter skips the LLM call entirely for very short or pure-acknowledgement messages (< 19 combined words). Each applied memory operation emits a `summary` string that becomes the audit trail. When the summary count exceeds 20, the oldest summaries are soft-deleted and any persistent facts are migrated into memory entries via another LLM pass.
 
 ---
 

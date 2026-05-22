@@ -1,3 +1,5 @@
+import type { WhisperAction } from './whisper.js';
+
 export type Role = 'user' | 'assistant' | 'system' | 'whisper' | 'system_internal';
 
 export type ContentBlock =
@@ -18,4 +20,5 @@ export interface Message {
   createdAt: string;
   thinking?: string;
   responseTimeMs?: number;
+  whisperActions?: WhisperAction[];
 }

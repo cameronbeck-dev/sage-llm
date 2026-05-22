@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useKnowledgeStore } from '../state/knowledgeStore.js';
 import { useConversationStore } from '../state/conversationStore.js';
-import type { KnowledgePack, KnowledgeFile } from '@sage/shared';
+import type { KnowledgeFile, KnowledgePack } from '@sage/shared';
 
 export default function Knowledge() {
   const { packs, filesByPack, isLoading, loadPacks, createPack, updatePack, deletePack, loadFiles, uploadFile, pollPendingFiles } = useKnowledgeStore();
-  const { createConversation, setActive } = useConversationStore();
+  const { setActive } = useConversationStore();
   const navigate = useNavigate();
 
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
@@ -81,7 +81,7 @@ export default function Knowledge() {
 
   async function handleTalkToSage() {
     if (!selectedPack) return;
-    const id = await createConversation(`Pack: ${selectedPack.name}`, selectedPack.id);
+    const id = await useConversationStore.getState().createConversation(selectedPack.name, selectedPack.id);
     await setActive(id);
     navigate('/');
   }
