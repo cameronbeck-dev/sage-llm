@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useKnowledgeStore } from '../state/knowledgeStore.js';
 import { useConversationStore } from '../state/conversationStore.js';
 import type { KnowledgeFile, KnowledgePack } from '@sage/shared';
+import BackButton from '../components/ui/BackButton.js';
+import ConfirmInline from '../components/ui/ConfirmInline.js';
 
 export default function Knowledge() {
   const { packs, filesByPack, isLoading, loadPacks, createPack, updatePack, deletePack, loadFiles, uploadFile, pollPendingFiles } = useKnowledgeStore();
@@ -89,12 +91,7 @@ export default function Knowledge() {
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <Link to="/" className="btn btn--sm">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 4 }}>
-            <path d="M8 5H2M2 5L5 2M2 5L5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back
-        </Link>
+        <BackButton to="/" />
       </header>
       <h1 className="settings-title">Knowledge Packs</h1>
 
@@ -130,18 +127,17 @@ export default function Knowledge() {
 
           {isLoading && <p className="settings-info">Loading...</p>}
           {!isLoading && packs.length === 0 && !creating && (
-            <p className="settings-info" style={{ opacity: 0.6 }}>No packs yet.</p>
+            <p className="settings-info u-muted">No packs yet.</p>
           )}
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <ul className="pack-list">
             {packs.map(pack => (
               <li
                 key={pack.id}
-                className={`memory-entry${selectedPackId === pack.id ? ' memory-entry--active' : ''}`}
-                style={{ cursor: 'pointer', padding: '8px 10px', marginBottom: 4, borderRadius: 4 }}
+                className={`pack-card${selectedPackId === pack.id ? ' pack-card--active' : ''}`}
                 onClick={() => setSelectedPackId(pack.id)}
               >
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{pack.name}</div>
-                {pack.description && <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{pack.description}</div>}
+                <div className="pack-card__name">{pack.name}</div>
+                {pack.description && <div className="pack-card__desc">{pack.description}</div>}
               </li>
             ))}
           </ul>
@@ -149,7 +145,7 @@ export default function Knowledge() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {!selectedPack ? (
-            <p className="settings-info" style={{ opacity: 0.6 }}>Select a pack to view its files.</p>
+            <p className="settings-info u-muted">Select a pack to view its files.</p>
           ) : (
             <>
               {editingPack?.id === selectedPack.id ? (
@@ -185,11 +181,11 @@ export default function Knowledge() {
                     setEditDesc(selectedPack.description ?? '');
                   }}>Edit</button>
                   {confirmDeleteId === selectedPack.id ? (
-                    <>
-                      <span className="settings-info">Delete pack?</span>
-                      <button className="btn btn--sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(selectedPack.id)}>Yes</button>
-                      <button className="btn btn--sm" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
-                    </>
+                    <ConfirmInline
+                      prompt="Delete pack?"
+                      onConfirm={() => handleDelete(selectedPack.id)}
+                      onCancel={() => setConfirmDeleteId(null)}
+                    />
                   ) : (
                     <button className="btn btn--sm" onClick={() => setConfirmDeleteId(selectedPack.id)}>Delete</button>
                   )}
@@ -201,55 +197,48 @@ export default function Knowledge() {
 
               <div
                 ref={dropRef}
+                className="knowledge-drop-zone"
                 onDragOver={e => e.preventDefault()}
                 onDrop={handleDrop}
-                style={{
-                  border: '2px dashed var(--border)',
-                  borderRadius: 6,
-                  padding: 20,
-                  textAlign: 'center',
-                  marginBottom: 16,
-                  cursor: 'pointer',
-                }}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <p className="settings-info">Drop files here or click to upload</p>
-                <p style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>PDF, MD, TXT, DOCX, CSV, JSON, code files — max 100 MB</p>
+                <p className="settings-info u-font-11 u-muted-5 u-mt-4">PDF, MD, TXT, DOCX, CSV, JSON, code files — max 100 MB</p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  style={{ display: 'none' }}
+                  className="u-hidden"
                   accept=".pdf,.md,.txt,.docx,.csv,.json,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.cpp,.c,.rb,.swift"
                   onChange={e => handleFiles(e.target.files)}
                 />
               </div>
 
-              {uploadError && <p className="settings-info" style={{ color: 'var(--danger)', marginBottom: 8 }}>{uploadError}</p>}
+              {uploadError && <p className="settings-info settings-info--danger u-mb-8">{uploadError}</p>}
 
               {selectedFiles.length === 0 ? (
-                <p className="settings-info" style={{ opacity: 0.6 }}>No files yet.</p>
+                <p className="settings-info u-muted">No files yet.</p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table className="data-table">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Filename</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Source</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Status</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Size</th>
+                    <tr>
+                      <th className="data-table__th">Filename</th>
+                      <th className="data-table__th">Source</th>
+                      <th className="data-table__th">Status</th>
+                      <th className="data-table__th">Size</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedFiles.map(file => (
-                      <tr key={file.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 8px' }}>{file.filename}</td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <span style={{ fontSize: 11, opacity: 0.7 }}>{file.sourceKind === 'chat_extracted' ? 'extracted' : 'upload'}</span>
+                      <tr key={file.id}>
+                        <td className="data-table__td">{file.filename}</td>
+                        <td className="data-table__td">
+                          <span className="u-font-11 u-muted">{file.sourceKind === 'chat_extracted' ? 'extracted' : 'upload'}</span>
                         </td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td className="data-table__td">
                           <StatusBadge status={file.status} />
                         </td>
-                        <td style={{ padding: '6px 8px', opacity: 0.6 }}>
+                        <td className="data-table__td data-table__td--muted">
                           {file.sizeBytes != null ? formatSize(file.sizeBytes) : '—'}
                         </td>
                       </tr>
@@ -269,11 +258,11 @@ function StatusBadge({ status }: { status: KnowledgeFile['status'] }) {
   const colors: Record<KnowledgeFile['status'], string> = {
     pending: 'var(--text-muted)',
     parsing: 'var(--accent)',
-    ready: '#4caf50',
+    ready: 'var(--accent)',
     failed: 'var(--danger)',
   };
   return (
-    <span style={{ fontSize: 11, color: colors[status], fontWeight: 600 }}>
+    <span className="status-badge" style={{ color: colors[status] }}>
       {status}
     </span>
   );

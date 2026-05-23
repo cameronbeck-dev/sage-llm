@@ -564,29 +564,18 @@ export default function Chat() {
             </svg>
           </button>
           {activeConversationId && (
-            <div style={{ position: 'relative', marginLeft: 'auto' }}>
+            <div className="packs-picker">
               <button className="btn btn--sm" onClick={() => setPackPickerOpen(o => !o)}>
                 Packs{activeConversation?.attachedPackIds?.length ? ` (${activeConversation.attachedPackIds.length})` : ''}
               </button>
               {packPickerOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  padding: 8,
-                  zIndex: 100,
-                  minWidth: 200,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                }}>
+                <div className="popover-menu">
                   {packs.length === 0 ? (
-                    <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No packs yet.</p>
+                    <p className="settings-info u-muted">No packs yet.</p>
                   ) : packs.map(pack => {
                     const attached = activeConversation?.attachedPackIds?.includes(pack.id) ?? false;
                     return (
-                      <label key={pack.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', cursor: 'pointer', fontSize: 13 }}>
+                      <label key={pack.id} className="popover-menu__label">
                         <input
                           type="checkbox"
                           checked={attached}
@@ -636,7 +625,7 @@ export default function Chat() {
                       .map((b) => b.text)
                       .join('');
                     return (
-                      <div key={msg.id}>
+                      <div key={msg.id} className={msg.role === 'whisper' ? 'chat-whisper-row' : 'chat-message-row'}>
                         <MessageBubble
                           role={msg.role as 'user' | 'assistant' | 'whisper'}
                           content={text}

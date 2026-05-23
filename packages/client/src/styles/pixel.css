@@ -80,6 +80,23 @@
   font-size: 11px;
 }
 
+.btn--danger-outline {
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--bg-raised);
+}
+.btn--danger-outline:hover:not(:disabled) {
+  border-color: var(--danger-border-strong);
+  color: var(--danger);
+}
+
+.btn--stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+}
+
 input, textarea, select {
   background: var(--bg-surface);
   border: 2px solid var(--border);

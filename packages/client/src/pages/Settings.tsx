@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../state/settingsStore.js';
 import { triggerToast } from '../components/ui/ToastContainer.js';
 import ProviderModelSelect from '../components/chat/ProviderModelSelect.js';
+import ConfirmModal from '../components/ui/ConfirmModal.js';
 
 function DangerZone() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -32,7 +32,6 @@ function DangerZone() {
   }
 
   async function handleDelete() {
-    if (confirmText !== 'DELETE') return;
     setDeleting(true);
     try {
       const res = await fetch('/api/account', { method: 'DELETE' });
@@ -45,89 +44,38 @@ function DangerZone() {
   }
 
   return (
-    <section
-      className="settings-section pixel-border"
-      style={{ borderColor: 'rgba(220,50,50,0.5)' }}
-    >
-      <h2 className="settings-section__title" style={{ color: '#e05555' }}>Danger Zone</h2>
-      <p className="settings-info" style={{ opacity: 0.7, marginBottom: 16 }}>
+    <section className="settings-section pixel-border card--danger">
+      <h2 className="settings-section__title settings-section__title--danger">Danger Zone</h2>
+      <p className="settings-info u-muted u-mb-16">
         These actions are irreversible. Please proceed with caution.
       </p>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="u-flex u-gap-12 u-flex-wrap">
         <button
-          className="btn"
+          className="btn btn--danger-outline"
           onClick={handleExport}
           disabled={exporting}
-          style={{ borderColor: 'rgba(220,50,50,0.5)', color: '#e05555' }}
         >
           {exporting ? 'Exporting...' : 'Export my data'}
         </button>
         <button
-          className="btn"
-          onClick={() => { setDeleteModalOpen(true); setConfirmText(''); }}
-          style={{ borderColor: 'rgba(220,50,50,0.5)', color: '#e05555' }}
+          className="btn btn--danger-outline"
+          onClick={() => setDeleteModalOpen(true)}
         >
           Delete my account
         </button>
       </div>
 
-      {deleteModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setDeleteModalOpen(false)}
-        >
-          <div
-            style={{
-              background: 'var(--color-surface, #1a1a1a)',
-              border: '1px solid rgba(220,50,50,0.6)',
-              borderRadius: 4,
-              padding: 24,
-              maxWidth: 400,
-              width: '90%',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0, color: '#e05555' }}>Delete account</h3>
-            <p className="settings-info" style={{ marginBottom: 16 }}>
-              This will permanently delete your account, all conversations, messages, and stored data.
-              Type <strong>DELETE</strong> to confirm.
-            </p>
-            <input
-              className="api-key-input"
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="Type DELETE to confirm"
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button
-                className="btn"
-                onClick={handleDelete}
-                disabled={confirmText !== 'DELETE' || deleting}
-                style={{ borderColor: 'rgba(220,50,50,0.7)', color: '#e05555' }}
-              >
-                {deleting ? 'Deleting...' : 'Confirm delete'}
-              </button>
-              <button
-                className="btn"
-                onClick={() => setDeleteModalOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete account"
+        message="This will permanently delete your account, all conversations, messages, and stored data."
+        confirmLabel={deleting ? 'Deleting...' : 'Confirm delete'}
+        danger
+        confirmationText="DELETE"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteModalOpen(false)}
+      />
     </section>
   );
 }

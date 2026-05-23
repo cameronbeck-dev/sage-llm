@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useUsageStore } from '../state/usageStore.js';
+import BackButton from '../components/ui/BackButton.js';
 
 export default function Usage() {
   const { report, isLoading, error, loadReport } = useUsageStore();
@@ -24,12 +24,7 @@ export default function Usage() {
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <Link to="/chat" className="btn btn--sm">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 4 }}>
-            <path d="M8 5H2M2 5L5 2M2 5L5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back
-        </Link>
+        <BackButton />
       </header>
       <h1 className="settings-title">Usage</h1>
 
@@ -61,7 +56,7 @@ export default function Usage() {
       </section>
 
       {isLoading && <p className="settings-info">Loading...</p>}
-      {error && <p className="settings-info" style={{ color: '#e05555' }}>{error}</p>}
+      {error && <p className="settings-info settings-info--danger">{error}</p>}
 
       {!isLoading && !error && report && (
         <>
@@ -90,22 +85,22 @@ export default function Usage() {
           {report.byProviderModel.length > 0 && (
             <section className="settings-section pixel-border">
               <h2 className="settings-section__title">By Provider / Model</h2>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>Provider</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>Model</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px', opacity: 0.6 }}>Messages</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px', opacity: 0.6 }}>Cost</th>
+                    <th className="data-table__th">Provider</th>
+                    <th className="data-table__th">Model</th>
+                    <th className="data-table__th data-table__th--right">Messages</th>
+                    <th className="data-table__th data-table__th--right">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.byProviderModel.map((row, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                      <td style={{ padding: '4px 8px' }}>{row.provider}</td>
-                      <td style={{ padding: '4px 8px' }}>{row.model}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'right' }}>{row.messageCount}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'right' }}>${row.costUsd.toFixed(4)}</td>
+                    <tr key={i}>
+                      <td className="data-table__td">{row.provider}</td>
+                      <td className="data-table__td">{row.model}</td>
+                      <td className="data-table__td data-table__td--right">{row.messageCount}</td>
+                      <td className="data-table__td data-table__td--right">${row.costUsd.toFixed(4)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -116,20 +111,20 @@ export default function Usage() {
           {report.topConversations.length > 0 && (
             <section className="settings-section pixel-border">
               <h2 className="settings-section__title">Top Conversations</h2>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>Title</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px', opacity: 0.6 }}>Messages</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px', opacity: 0.6 }}>Cost</th>
+                    <th className="data-table__th">Title</th>
+                    <th className="data-table__th data-table__th--right">Messages</th>
+                    <th className="data-table__th data-table__th--right">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.topConversations.map((row) => (
-                    <tr key={row.conversationId} style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                      <td style={{ padding: '4px 8px' }}>{row.title}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'right' }}>{row.messageCount}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'right' }}>${row.costUsd.toFixed(4)}</td>
+                    <tr key={row.conversationId}>
+                      <td className="data-table__td">{row.title}</td>
+                      <td className="data-table__td data-table__td--right">{row.messageCount}</td>
+                      <td className="data-table__td data-table__td--right">${row.costUsd.toFixed(4)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -138,7 +133,7 @@ export default function Usage() {
           )}
 
           {report.byDay.length === 0 && report.byProviderModel.length === 0 && report.topConversations.length === 0 && (
-            <p className="settings-info" style={{ opacity: 0.6 }}>No usage data for this period.</p>
+            <p className="settings-info u-muted">No usage data for this period.</p>
           )}
         </>
       )}

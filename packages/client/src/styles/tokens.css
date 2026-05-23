@@ -18,6 +18,12 @@
   --radius: 2px;
   --shadow: 2px 2px 0 #0a0b09;
 
+  --color-surface-2: rgba(127,127,127,0.15);
+  --color-border: var(--border-dim);
+  --danger-border: rgba(220,50,50,0.5);
+  --danger-border-strong: rgba(220,50,50,0.7);
+  --overlay-subtle: rgba(255,255,255,0.07);
+
   /* Mobile */
   --sidebar-width: 240px;
   --mobile-breakpoint: 768px;

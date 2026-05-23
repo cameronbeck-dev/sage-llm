@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import BackButton from '../components/ui/BackButton.js';
 
 interface ImportRow {
   id: string;
@@ -129,12 +129,7 @@ export default function Import() {
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <Link to="/settings" className="btn btn--sm">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 4 }}>
-            <path d="M8 5H2M2 5L5 2M2 5L5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back
-        </Link>
+        <BackButton to="/settings" />
       </header>
       <h1 className="settings-title">Import Conversations</h1>
 
@@ -199,20 +194,20 @@ export default function Import() {
           )}
 
           {(display.status === 'ready' || display.status === 'done') && display.stats && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 12 }}>
+            <table className="data-table data-table--compact u-mt-12">
               <tbody>
                 <tr>
-                  <td style={{ padding: '4px 0', opacity: 0.6 }}>Conversations</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right' }}>{display.stats.conversationCount ?? 0}</td>
+                  <td className="data-table__td data-table__td--muted">Conversations</td>
+                  <td className="data-table__td data-table__td--right">{display.stats.conversationCount ?? 0}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: '4px 0', opacity: 0.6 }}>Messages</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right' }}>{display.stats.messageCount ?? 0}</td>
+                  <td className="data-table__td data-table__td--muted">Messages</td>
+                  <td className="data-table__td data-table__td--right">{display.stats.messageCount ?? 0}</td>
                 </tr>
                 {(display.stats.skipped ?? 0) > 0 && (
                   <tr>
-                    <td style={{ padding: '4px 0', opacity: 0.6 }}>Skipped</td>
-                    <td style={{ padding: '4px 0', textAlign: 'right' }}>{display.stats.skipped}</td>
+                    <td className="data-table__td data-table__td--muted">Skipped</td>
+                    <td className="data-table__td data-table__td--right">{display.stats.skipped}</td>
                   </tr>
                 )}
               </tbody>
@@ -220,20 +215,20 @@ export default function Import() {
           )}
 
           {display.status === 'ready' && display.stats.errors && display.stats.errors.length > 0 && (
-            <details style={{ marginTop: 8 }}>
+            <details className="u-mt-8">
               <summary className="settings-info" style={{ cursor: 'pointer' }}>
                 {display.stats.errors.length} parse warning{display.stats.errors.length > 1 ? 's' : ''}
               </summary>
-              <ul style={{ marginTop: 4, paddingLeft: 16 }}>
+              <ul className="import-errors-list">
                 {display.stats.errors.map((e, i) => (
-                  <li key={i} className="settings-info" style={{ color: '#e0a055' }}>{e}</li>
+                  <li key={i} className="settings-info settings-info--warning">{e}</li>
                 ))}
               </ul>
             </details>
           )}
 
           {display.status === 'ready' && (
-            <div style={{ marginTop: 16 }}>
+            <div className="u-mt-16">
               <button
                 className="btn btn--primary"
                 onClick={handleCommit}
@@ -241,7 +236,7 @@ export default function Import() {
               >
                 {committing ? 'Starting...' : 'Import into Sage'}
               </button>
-              <p className="settings-info" style={{ marginTop: 8, opacity: 0.6 }}>
+              <p className="settings-info u-mt-8 u-muted">
                 Conversations will be archived and their content will be used to seed your memory.
               </p>
             </div>
@@ -253,33 +248,33 @@ export default function Import() {
         <h2 className="settings-section__title">Past Imports</h2>
         {loadingList && <p className="settings-info">Loading...</p>}
         {!loadingList && imports.length === 0 && (
-          <p className="settings-info" style={{ opacity: 0.6 }}>No imports yet.</p>
+          <p className="settings-info u-muted">No imports yet.</p>
         )}
         {!loadingList && imports.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="data-table">
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>File</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>Source</th>
-                <th style={{ textAlign: 'left', padding: '4px 8px', opacity: 0.6 }}>Status</th>
-                <th style={{ textAlign: 'right', padding: '4px 8px', opacity: 0.6 }}>Date</th>
+                <th className="data-table__th">File</th>
+                <th className="data-table__th">Source</th>
+                <th className="data-table__th">Status</th>
+                <th className="data-table__th data-table__th--right">Date</th>
               </tr>
             </thead>
             <tbody>
               {imports.map((imp) => (
                 <tr
                   key={imp.id}
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer' }}
+                  className="u-cursor-pointer"
                   onClick={() => {
                     setActiveImportId(imp.id);
                     setActiveImport(imp);
                     if (POLLING_STATUSES.includes(imp.status)) startPolling(imp.id);
                   }}
                 >
-                  <td style={{ padding: '4px 8px' }}>{imp.filename}</td>
-                  <td style={{ padding: '4px 8px' }}>{imp.source}</td>
-                  <td style={{ padding: '4px 8px' }}>{imp.status}</td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                  <td className="data-table__td">{imp.filename}</td>
+                  <td className="data-table__td">{imp.source}</td>
+                  <td className="data-table__td">{imp.status}</td>
+                  <td className="data-table__td data-table__td--right">
                     {new Date(imp.created_at).toLocaleDateString()}
                   </td>
                 </tr>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { MemoryEntry, MemoryEntryVersion, SummaryEntryRow } from '@sage/shared';
+import BackButton from '../components/ui/BackButton.js';
+import ConfirmInline from '../components/ui/ConfirmInline.js';
 
 type Tab = 'entries' | 'summaries' | 'history';
 
@@ -10,12 +12,7 @@ export default function Memory() {
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <Link to="/chat" className="btn btn--sm">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 4 }}>
-            <path d="M8 5H2M2 5L5 2M2 5L5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Back
-        </Link>
+        <BackButton />
       </header>
       <h1 className="settings-title">Memory</h1>
       <div className="memory-tabs">
@@ -74,7 +71,7 @@ function EntriesTab() {
   const whyEntry = whyEntryId ? entries.find(e => e.id === whyEntryId) : null;
 
   if (loading) return <p className="settings-info">Loading...</p>;
-  if (entries.length === 0) return <p className="settings-info" style={{ opacity: 0.6 }}>No memories yet.</p>;
+  if (entries.length === 0) return <p className="settings-info u-muted">No memories yet.</p>;
 
   return (
     <>
@@ -105,9 +102,11 @@ function EntriesTab() {
                 </div>
                 {confirmForgetId === entry.id ? (
                   <div className="memory-entry__actions">
-                    <span className="settings-info">Forget?</span>
-                    <button className="btn btn--sm" style={{ color: 'var(--danger)' }} onClick={() => forgetEntry(entry.id)}>Yes</button>
-                    <button className="btn btn--sm" onClick={() => setConfirmForgetId(null)}>Cancel</button>
+                    <ConfirmInline
+                      prompt="Forget?"
+                      onConfirm={() => forgetEntry(entry.id)}
+                      onCancel={() => setConfirmForgetId(null)}
+                    />
                   </div>
                 ) : (
                   <div className="memory-entry__actions">
@@ -125,10 +124,10 @@ function EntriesTab() {
       {whyEntry && (
         <div className="memory-why-drawer">
           <button className="btn btn--sm memory-why-drawer__close" onClick={() => setWhyEntryId(null)}>Close</button>
-          <h2 className="settings-section__title" style={{ marginBottom: 12 }}>Source</h2>
+          <h2 className="settings-section__title u-mb-12">Source</h2>
           {whyEntry.sourceConversationId ? (
             <>
-              <p className="settings-info" style={{ marginBottom: 8 }}>
+              <p className="settings-info u-mb-8">
                 Conversation: <Link to={`/chat/${whyEntry.sourceConversationId}`}>{whyEntry.sourceConversationId}</Link>
               </p>
               {whyEntry.sourceMessageId && (
@@ -163,7 +162,7 @@ function SummariesTab() {
   }
 
   if (loading) return <p className="settings-info">Loading...</p>;
-  if (summaries.length === 0) return <p className="settings-info" style={{ opacity: 0.6 }}>No conversation summaries yet.</p>;
+  if (summaries.length === 0) return <p className="settings-info u-muted">No conversation summaries yet.</p>;
 
   return (
     <>
@@ -212,7 +211,7 @@ function HistoryTab() {
   }
 
   if (loading) return <p className="settings-info">Loading...</p>;
-  if (versions.length === 0) return <p className="settings-info" style={{ opacity: 0.6 }}>No version history yet.</p>;
+  if (versions.length === 0) return <p className="settings-info u-muted">No version history yet.</p>;
 
   return (
     <>
