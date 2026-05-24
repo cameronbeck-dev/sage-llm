@@ -27,7 +27,8 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
   - **Pack-literacy system block** — every conversation system prompt now includes a concise description of the user's packs and a reminder that capture is automatic, so Sage never claims to "save" or "file" content itself.
   - **Per-pack dedup** — before inserting a chunk into an existing pack, Sage checks the 10 most-recent chunks for semantic overlap and skips if the candidate is a duplicate.
   - **Orphan consolidation** — substantive notes that don't match any existing pack accumulate as "orphans". When ≥ 5 orphans share a topic, a consolidation LLM pass proposes a pack name and description, and a whisper offers to create the pack.
-  - **Whisper actions** — whispers carry `WhisperAction[]` buttons with snake_case `kind` values: `add_to_pack`, `create_pack`, `always_extract_to_pack`, `undo_extraction`, `dismiss`. Each button can be greyed out after use via `consumedAt`; other buttons remain clickable.
+  - **Whisper actions** — whispers carry `WhisperAction[]` buttons with snake_case `kind` values: `add_to_pack`, `create_pack`, `always_extract_to_pack`, `undo_extraction`, `undo_memory`, `undo_orphan`, `view_entry`, `dismiss`. Each button can be greyed out after use via `consumedAt`; other buttons remain clickable. `view_entry` is handled client-side and opens a modal showing the just-saved memory entry or knowledge chunk.
+  - **Pack entry browser** — the Knowledge page right column has Files / Entries tabs; the Entries tab lists every `knowledge_chunk` in the selected pack, styled like memory cards.
 - **Pixel Art UI** — Muted forest tones with vibrant green accents; Sage avatar reacts to state
 
 ---

@@ -1,15 +1,17 @@
 import { create } from 'zustand';
-import type { KnowledgePack, KnowledgeFile } from '@sage/shared';
+import type { KnowledgePack, KnowledgeFile, KnowledgeChunk } from '@sage/shared';
 
 interface KnowledgeState {
   packs: KnowledgePack[];
   filesByPack: Record<string, KnowledgeFile[]>;
+  chunksByPack: Record<string, KnowledgeChunk[]>;
   isLoading: boolean;
   loadPacks: () => Promise<void>;
   createPack: (name: string, description?: string) => Promise<KnowledgePack>;
   updatePack: (packId: string, updates: { name?: string; description?: string | null }) => Promise<void>;
   deletePack: (packId: string) => Promise<void>;
   loadFiles: (packId: string) => Promise<void>;
+  loadChunks: (packId: string) => Promise<void>;
   uploadFile: (packId: string, file: File) => Promise<void>;
   attachPack: (conversationId: string, packId: string) => Promise<void>;
   detachPack: (conversationId: string, packId: string) => Promise<void>;
@@ -21,6 +23,7 @@ const pollingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   packs: [],
   filesByPack: {},
+  chunksByPack: {},
   isLoading: false,
 
   async loadPacks() {
@@ -73,6 +76,13 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     if (!res.ok) return;
     const files = (await res.json()) as KnowledgeFile[];
     set(s => ({ filesByPack: { ...s.filesByPack, [packId]: files } }));
+  },
+
+  async loadChunks(packId) {
+    const res = await fetch(`/api/knowledge/packs/${packId}/chunks`);
+    if (!res.ok) return;
+    const chunks = (await res.json()) as KnowledgeChunk[];
+    set(s => ({ chunksByPack: { ...s.chunksByPack, [packId]: chunks } }));
   },
 
   async uploadFile(packId, file) {

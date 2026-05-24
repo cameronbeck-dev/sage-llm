@@ -28,6 +28,24 @@ memoryRouter.get('/entries', requireAuth, async (req, res, next) => {
   }
 });
 
+memoryRouter.get('/entries/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!isUUID(req.params.id)) {
+      res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid entry id' } });
+      return;
+    }
+    const entries = await listMemoryEntries(req.session!.userId!);
+    const entry = entries.find(e => e.id === req.params.id && e.deletedAt === null);
+    if (!entry) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Entry not found' } });
+      return;
+    }
+    res.json(entry);
+  } catch (err) {
+    next(err);
+  }
+});
+
 memoryRouter.patch('/entries/:id', requireAuth, async (req, res, next) => {
   try {
     if (!isUUID(req.params.id)) {

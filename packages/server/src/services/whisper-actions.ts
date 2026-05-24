@@ -121,6 +121,11 @@ export async function handleWhisperAction(
         break;
       }
 
+      case 'view_entry': {
+        // Handled client-side; no server state change needed
+        break;
+      }
+
       default: {
         await client.query('ROLLBACK');
         const err = new Error('Unknown action kind') as Error & { status?: number };

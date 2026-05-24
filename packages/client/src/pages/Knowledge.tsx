@@ -6,12 +6,15 @@ import type { KnowledgeFile, KnowledgePack } from '@sage/shared';
 import BackButton from '../components/ui/BackButton.js';
 import ConfirmInline from '../components/ui/ConfirmInline.js';
 
+type RightTab = 'files' | 'entries';
+
 export default function Knowledge() {
-  const { packs, filesByPack, isLoading, loadPacks, createPack, updatePack, deletePack, loadFiles, uploadFile, pollPendingFiles } = useKnowledgeStore();
+  const { packs, filesByPack, chunksByPack, isLoading, loadPacks, createPack, updatePack, deletePack, loadFiles, loadChunks, uploadFile, pollPendingFiles } = useKnowledgeStore();
   const { setActive } = useConversationStore();
   const navigate = useNavigate();
 
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<RightTab>('files');
   const [creating, setCreating] = useState(false);
   const [newPackName, setNewPackName] = useState('');
   const [newPackDesc, setNewPackDesc] = useState('');
@@ -30,8 +33,15 @@ export default function Knowledge() {
   useEffect(() => {
     if (selectedPackId) {
       loadFiles(selectedPackId);
+      setRightTab('files');
     }
   }, [selectedPackId, loadFiles]);
+
+  useEffect(() => {
+    if (selectedPackId && rightTab === 'entries') {
+      loadChunks(selectedPackId);
+    }
+  }, [selectedPackId, rightTab, loadChunks]);
 
   useEffect(() => {
     if (selectedPackId) {
@@ -41,6 +51,7 @@ export default function Knowledge() {
 
   const selectedPack = packs.find(p => p.id === selectedPackId) ?? null;
   const selectedFiles = selectedPackId ? (filesByPack[selectedPackId] ?? []) : [];
+  const selectedChunks = selectedPackId ? (chunksByPack[selectedPackId] ?? []) : [];
 
   async function handleCreatePack(e: React.FormEvent) {
     e.preventDefault();
@@ -195,56 +206,86 @@ export default function Knowledge() {
                 </div>
               )}
 
-              <div
-                ref={dropRef}
-                className="knowledge-drop-zone"
-                onDragOver={e => e.preventDefault()}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <p className="settings-info">Drop files here or click to upload</p>
-                <p className="settings-info u-font-11 u-muted-5 u-mt-4">PDF, MD, TXT, DOCX, CSV, JSON, code files — max 100 MB</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="u-hidden"
-                  accept=".pdf,.md,.txt,.docx,.csv,.json,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.cpp,.c,.rb,.swift"
-                  onChange={e => handleFiles(e.target.files)}
-                />
+              <div className="memory-tabs" style={{ marginBottom: 12 }}>
+                <button onClick={() => setRightTab('files')} className={rightTab === 'files' ? 'active' : ''}>Files</button>
+                <button onClick={() => setRightTab('entries')} className={rightTab === 'entries' ? 'active' : ''}>Entries</button>
               </div>
 
-              {uploadError && <p className="settings-info settings-info--danger u-mb-8">{uploadError}</p>}
+              {rightTab === 'files' && (
+                <>
+                  <div
+                    ref={dropRef}
+                    className="knowledge-drop-zone"
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <p className="settings-info">Drop files here or click to upload</p>
+                    <p className="settings-info u-font-11 u-muted-5 u-mt-4">PDF, MD, TXT, DOCX, CSV, JSON, code files — max 100 MB</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="u-hidden"
+                      accept=".pdf,.md,.txt,.docx,.csv,.json,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.cpp,.c,.rb,.swift"
+                      onChange={e => handleFiles(e.target.files)}
+                    />
+                  </div>
 
-              {selectedFiles.length === 0 ? (
-                <p className="settings-info u-muted">No files yet.</p>
-              ) : (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="data-table__th">Filename</th>
-                      <th className="data-table__th">Source</th>
-                      <th className="data-table__th">Status</th>
-                      <th className="data-table__th">Size</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedFiles.map(file => (
-                      <tr key={file.id}>
-                        <td className="data-table__td">{file.filename}</td>
-                        <td className="data-table__td">
-                          <span className="u-font-11 u-muted">{file.sourceKind === 'chat_extracted' ? 'extracted' : 'upload'}</span>
-                        </td>
-                        <td className="data-table__td">
-                          <StatusBadge status={file.status} />
-                        </td>
-                        <td className="data-table__td data-table__td--muted">
-                          {file.sizeBytes != null ? formatSize(file.sizeBytes) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  {uploadError && <p className="settings-info settings-info--danger u-mb-8">{uploadError}</p>}
+
+                  {selectedFiles.length === 0 ? (
+                    <p className="settings-info u-muted">No files yet.</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th className="data-table__th">Filename</th>
+                          <th className="data-table__th">Source</th>
+                          <th className="data-table__th">Status</th>
+                          <th className="data-table__th">Size</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedFiles.map(file => (
+                          <tr key={file.id}>
+                            <td className="data-table__td">{file.filename}</td>
+                            <td className="data-table__td">
+                              <span className="u-font-11 u-muted">{file.sourceKind === 'chat_extracted' ? 'extracted' : 'upload'}</span>
+                            </td>
+                            <td className="data-table__td">
+                              <StatusBadge status={file.status} />
+                            </td>
+                            <td className="data-table__td data-table__td--muted">
+                              {file.sizeBytes != null ? formatSize(file.sizeBytes) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              )}
+
+              {rightTab === 'entries' && (
+                <>
+                  {selectedChunks.length === 0 ? (
+                    <p className="settings-info u-muted">No entries yet.</p>
+                  ) : (
+                    selectedChunks.map(chunk => (
+                      <div key={chunk.id} className="memory-entry">
+                        <div className="memory-entry__body">{chunk.body}</div>
+                        <div className="memory-entry__footer">
+                          <div className="memory-entry__meta">
+                            <span className="memory-entry__type">{chunk.sourceFilename}</span>
+                            {' · '}
+                            {new Date(chunk.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </>
           )}

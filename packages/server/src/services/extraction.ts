@@ -216,6 +216,7 @@ export async function* extractAfterTurn(
           if (addedEntry) {
             const whisperActions: WhisperAction[] = [
               { kind: 'undo_memory', entryId: addedEntry.entryId, label: 'Undo' },
+              { kind: 'view_entry', label: 'View', target: { type: 'memory', entryId: addedEntry.entryId } },
               { kind: 'dismiss', label: 'Dismiss' },
             ];
             const content: ContentBlock[] = [
@@ -276,10 +277,12 @@ export async function* extractAfterTurn(
         const whisperActions: WhisperAction[] = attachment?.auto_extract
           ? [
               { kind: 'undo_extraction', chunkId, label: 'Undo' },
+              { kind: 'view_entry', label: 'View', target: { type: 'chunk', packId: destination.packId, chunkId } },
               { kind: 'dismiss', label: 'Dismiss' },
             ]
           : [
               { kind: 'undo_extraction', chunkId, label: 'Undo' },
+              { kind: 'view_entry', label: 'View', target: { type: 'chunk', packId: destination.packId, chunkId } },
               { kind: 'always_extract_to_pack', packId: destination.packId, label: `Always extract to ${packName}` },
               { kind: 'dismiss', label: 'Dismiss' },
             ];

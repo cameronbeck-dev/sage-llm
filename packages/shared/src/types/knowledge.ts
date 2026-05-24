@@ -20,3 +20,12 @@ export interface KnowledgeFile {
   fileHash: string | null;
   createdAt: string;
 }
+
+export interface KnowledgeChunk {
+  id: string;
+  packId: string;
+  fileId: string;
+  sourceFilename: string;
+  body: string;
+  createdAt: string;
+}

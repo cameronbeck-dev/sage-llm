@@ -237,3 +237,67 @@ knowledgeRouter.get('/conversations/:conversationId/packs', requireAuth, async (
     next(err);
   }
 });
+
+// ─── Chunk queries ────────────────────────────────────────────────────────────
+
+knowledgeRouter.get('/packs/:packId/chunks', requireAuth, async (req, res, next) => {
+  try {
+    const pack = await getPack(req.session!.userId!, req.params.packId);
+    if (!pack) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pack not found' } });
+      return;
+    }
+    const pool = getPool();
+    const { rows } = await pool.query<{
+      id: string; pack_id: string; file_id: string; filename: string; text: string; created_at: Date;
+    }>(
+      `SELECT kc.id, kc.pack_id, kc.file_id, kf.filename, kc.text, kc.created_at
+       FROM knowledge_chunks kc
+       JOIN knowledge_files kf ON kf.id = kc.file_id
+       WHERE kc.pack_id = $1
+       ORDER BY kc.created_at DESC`,
+      [req.params.packId]
+    );
+    res.json(rows.map(r => ({
+      id: r.id,
+      packId: r.pack_id,
+      fileId: r.file_id,
+      sourceFilename: r.filename,
+      body: r.text,
+      createdAt: r.created_at.toISOString(),
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+knowledgeRouter.get('/chunks/:chunkId', requireAuth, async (req, res, next) => {
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query<{
+      id: string; pack_id: string; file_id: string; filename: string; text: string; created_at: Date; user_id: string;
+    }>(
+      `SELECT kc.id, kc.pack_id, kc.file_id, kf.filename, kc.text, kc.created_at, kp.user_id
+       FROM knowledge_chunks kc
+       JOIN knowledge_files kf ON kf.id = kc.file_id
+       JOIN knowledge_packs kp ON kp.id = kc.pack_id
+       WHERE kc.id = $1`,
+      [req.params.chunkId]
+    );
+    if (rows.length === 0 || rows[0].user_id !== req.session!.userId!) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Chunk not found' } });
+      return;
+    }
+    const r = rows[0];
+    res.json({
+      id: r.id,
+      packId: r.pack_id,
+      fileId: r.file_id,
+      sourceFilename: r.filename,
+      body: r.text,
+      createdAt: r.created_at.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
