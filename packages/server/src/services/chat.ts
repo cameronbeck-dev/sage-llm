@@ -4,11 +4,15 @@ import { listMessages, createMessage } from './messages.js';
 import { getUserSettings, updateUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
 import { createWhisper } from './docs.js';
-import { renderMemoryMarkdown, renderSummariesBlock, getExistingSummaryConversationIds, summarizeConversation } from './memory.js';
+import { renderMemoryMarkdown, renderSummariesBlock, getExistingSummaryConversationIds, summarizeConversation } from './_legacy/memory.js';
 import { getCurrentPeriodSpendCents } from './usage.js';
-import { searchChunks, getAttachedPackIds, listPacks } from './knowledge.js';
-import { extractAfterTurn } from './extraction.js';
+import { searchChunks, getAttachedPackIds, listPacks } from './_legacy/knowledge.js';
+import { extractAfterTurn } from './_legacy/extraction.js';
 import { buildPackLiteracyBlock } from '../prompts/pack-literacy.js';
+import { isWikiEnabled } from '../config/flags.js';
+import { getBoss } from '../jobs/boss.js';
+import { WIKI_INGEST_TURN } from '../jobs/handlers/wiki-ingest-turn.js';
+import * as maintainer from './wiki/maintainer.js';
 import { getAllTools, getToolSchemas, getToolByName } from '../tools/registry.js';
 import { consumeToolCallToken } from '../middleware/rateLimit.js';
 import type { ContentBlock, SSEChunk } from '@sage/shared';
@@ -27,6 +31,27 @@ async function getDefaultAgentFile(userId: string): Promise<string | null> {
     [userId]
   );
   return rows.length > 0 ? (rows[0].content as string) : null;
+}
+
+async function awaitPendingWikiIngest(conversationId: string, timeoutMs: number): Promise<void> {
+  const pool = getPool();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM pgboss.job
+         WHERE name = $1 AND state IN ('created','active','retry')
+           AND data->>'conversationId' = $2
+         LIMIT 1`,
+        [WIKI_INGEST_TURN, conversationId]
+      );
+      if (rows.length === 0) return;
+    } catch (err) {
+      console.warn('[chat] awaitPendingWikiIngest query failed, proceeding:', err);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
 }
 
 export async function* chatStream(
@@ -69,6 +94,21 @@ export async function* chatStream(
 
   const userPacks = await listPacks(userId);
 
+  let wikiContext = '';
+  if (isWikiEnabled()) {
+    await awaitPendingWikiIngest(conversationId, 5000);
+    try {
+      wikiContext = await maintainer.queryForContext({
+        userId,
+        conversationId,
+        recentUserMessage: userMessage,
+      });
+    } catch (err) {
+      console.warn('[chat] wiki queryForContext failed:', err);
+      wikiContext = '';
+    }
+  }
+
   const systemParts: string[] = [];
 
   if (agentContent) systemParts.push(agentContent);
@@ -101,6 +141,8 @@ export async function* chatStream(
       }
     }
   }
+
+  if (wikiContext) systemParts.push(wikiContext);
 
   systemParts.push('Memory policy: Do not mention memory updates in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
 
@@ -393,14 +435,24 @@ async function* finishTurn(
   historyLength: number,
   userMessage: string
 ): AsyncIterable<SSEChunk> {
-  let destinationCompleteCount = 0;
-  for await (const chunk of extractAfterTurn(userId, conversationId, userMessageId, assistantMessageId)) {
-    if (chunk.type === 'extraction_progress' && chunk.stage === 'destination_complete') destinationCompleteCount++;
-    yield chunk;
-  }
-
-  if (destinationCompleteCount === 0) {
+  if (isWikiEnabled()) {
+    const boss = await getBoss();
+    await boss.send(WIKI_INGEST_TURN, {
+      userId,
+      conversationId,
+      userMessageId,
+      assistantMessageId,
+    });
     yield { type: 'whisper', whisperText: '' };
+  } else {
+    let destinationCompleteCount = 0;
+    for await (const chunk of extractAfterTurn(userId, conversationId, userMessageId, assistantMessageId)) {
+      if (chunk.type === 'extraction_progress' && chunk.stage === 'destination_complete') destinationCompleteCount++;
+      yield chunk;
+    }
+    if (destinationCompleteCount === 0) {
+      yield { type: 'whisper', whisperText: '' };
+    }
   }
 
   if (historyLength === 0 && userMessage.trim()) {

@@ -21,6 +21,7 @@ const envSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().optional(),
+  SAGE_WIKI_ENABLED: z.string().default('false').transform(v => v === 'true'),
   SEARXNG_URL: z.string().default('http://localhost:8080'),
   WEB_FETCH_USER_AGENT: z.string().default('Sage/1.0 (+https://sage.local)'),
   WEB_FETCH_TIMEOUT_MS: z.coerce.number().default(10000),

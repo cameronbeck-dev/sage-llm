@@ -76,7 +76,7 @@ export async function createConversation(
   const conversationId = rows[0].id;
 
   if (seedFromPackId) {
-    const { attachPackToConversation } = await import('./knowledge.js');
+    const { attachPackToConversation } = await import('./_legacy/knowledge.js');
     await attachPackToConversation(userId, conversationId, seedFromPackId, { autoExtract: true });
 
     const { buildPackOpener } = await import('../prompts/pack-opener.js');

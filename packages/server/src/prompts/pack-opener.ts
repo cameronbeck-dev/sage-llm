@@ -2,8 +2,8 @@ import { getPool } from '../db/pool.js';
 import { getProvider } from '../providers/registry.js';
 import { getUserSettings } from '../services/settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from '../services/credentials.js';
-import { listMemoryEntries } from '../services/memory.js';
-import { getPack } from '../services/knowledge.js';
+import { listMemoryEntries } from '../services/_legacy/memory.js';
+import { getPack } from '../services/_legacy/knowledge.js';
 import { createMessage } from '../services/messages.js';
 
 async function loadPackChunks(packId: string, charLimit = 6000): Promise<string[]> {

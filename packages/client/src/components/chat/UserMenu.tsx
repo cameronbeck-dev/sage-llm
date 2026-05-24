@@ -101,6 +101,21 @@ export default function UserMenu({ user, onLogout }: Props) {
           </Link>
           <Link
             className="user-menu__item"
+            to="/facts"
+            role="menuitem"
+            onClick={() => setIsOpen(false)}
+          >
+            <span className="user-menu__icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="2" y="3" width="12" height="2"/>
+                <rect x="2" y="7" width="9" height="2"/>
+                <rect x="2" y="11" width="6" height="2"/>
+              </svg>
+            </span>
+            Facts
+          </Link>
+          <Link
+            className="user-menu__item"
             to="/import"
             role="menuitem"
             onClick={() => setIsOpen(false)}

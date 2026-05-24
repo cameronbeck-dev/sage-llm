@@ -1,5 +1,5 @@
-import { getPool } from '../db/pool.js';
-import { getObjectStore } from '../storage/index.js';
+import { getPool } from '../../db/pool.js';
+import { getObjectStore } from '../../storage/index.js';
 import type { KnowledgePack, KnowledgeFile } from '@sage/shared';
 
 function rowToPack(row: Record<string, unknown>): KnowledgePack {

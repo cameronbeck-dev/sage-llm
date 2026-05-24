@@ -398,6 +398,38 @@ When `web_search` or `web_fetch` return results, inline Markdown links appear in
 
 ---
 
+## Wiki Rebuild (Parallel Run)
+
+The codebase is mid-rebuild from the current per-turn extraction pipeline to a Karpathy-style wiki + mem0 fact tier. All new wiki code lives on the `wiki-migration` branch and is guarded by the `SAGE_WIKI_ENABLED` env flag (default `false`), so v1 behaviour is unchanged unless you opt in.
+
+### Facts page (Phase 3)
+
+When `SAGE_WIKI_ENABLED=true`, Sage extracts structured facts from every conversation turn and stores them in the `memories` table. Facts are browsable at `/facts` and searchable via full-text. The `/memory` page shows a legacy banner pointing to `/facts`.
+
+**mem0ai dependency:** `packages/server` depends on `mem0ai` (npm). The package is installed and pinned — future phases will use it for intelligent deduplication and entity linking. For Phase 3, Sage owns the storage layer directly (custom Postgres implementation, same schema).
+
+**pgvector requirement:** migration `023_pgvector.sql` runs `CREATE EXTENSION IF NOT EXISTS vector`. Your Postgres instance must have pgvector available:
+- **Neon / Supabase / Railway** — enabled by default or as a one-click setting in the dashboard.
+- **Render** — enable the `pgvector` extension in the Render Postgres settings.
+- **Self-hosted Postgres** — `apt install postgresql-15-pgvector` (or your distro's equivalent), then `CREATE EXTENSION vector;` in psql.
+- If pgvector is unavailable, migrations `023_pgvector.sql` and `024_mem0_schema.sql` will fail at startup with a logged error. The server still boots (the migration runner catches and logs), but wiki facts won't work. Install pgvector and restart — migrations will retry and succeed.
+
+**Rollback target:** git tag `sage-v1-pre-wiki` captures the exact state before any wiki changes landed.
+
+**A/B testing v1 vs wiki-migration side-by-side:**
+
+```bash
+# Terminal 1 — v1 on port 3001 (main branch, separate DB)
+DATABASE_URL=postgresql://localhost:5432/sage_v1 PORT=3001 npm run dev
+
+# Terminal 2 — wiki-migration on port 3002 (wiki-migration branch, separate DB)
+DATABASE_URL=postgresql://localhost:5432/sage_wiki PORT=3002 SAGE_WIKI_ENABLED=true npm run dev
+```
+
+Each instance needs its own `DATABASE_URL` so migrations don't collide. Both can share the same GitHub OAuth app as long as `OAUTH_REDIRECT_URI` matches the port you're testing. Set `SAGE_WIKI_ENABLED=true` only on the wiki-migration instance.
+
+---
+
 ## Known Limitations
 
 - **Import commit retries are not idempotent** — if a commit job fails partway through, already-archived conversations remain. Re-uploading after a failure drops the failed row and starts a fresh upload; re-uploading after a successful commit short-circuits and does not re-import.

@@ -8,6 +8,7 @@ import Settings from './pages/Settings.js';
 import Stub from './pages/Stub.js';
 import Usage from './pages/Usage.js';
 import Memory from './pages/Memory.js';
+import Facts from './pages/Facts.js';
 import Import from './pages/Import.js';
 import Knowledge from './pages/Knowledge.js';
 
@@ -87,6 +88,14 @@ export default function AppRouter() {
           element={
             <RequireAuth>
               <Memory />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/facts"
+          element={
+            <RequireAuth>
+              <Facts />
             </RequireAuth>
           }
         />

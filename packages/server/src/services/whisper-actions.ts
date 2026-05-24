@@ -1,7 +1,7 @@
 import { getPool } from '../db/pool.js';
-import { createPack, attachPackToConversation } from './knowledge.js';
-import { insertPackChunk } from './extraction.js';
-import { getOrphansByIds } from './orphans.js';
+import { createPack, attachPackToConversation } from './_legacy/knowledge.js';
+import { insertPackChunk } from './_legacy/extraction.js';
+import { getOrphansByIds } from './_legacy/orphans.js';
 import type { Message, WhisperAction } from '@sage/shared';
 import { rowToMessage } from './messages.js';
 

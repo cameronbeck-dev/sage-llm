@@ -20,6 +20,9 @@ import { getBoss } from './jobs/boss.js';
 import { IMPORT_PARSE_JOB } from './jobs/handlers/import-parse.js';
 import { IMPORT_COMMIT_JOB } from './jobs/handlers/import-commit.js';
 import { KNOWLEDGE_PARSE_JOB } from './jobs/handlers/knowledge-parse.js';
+import { WIKI_MIGRATE } from './jobs/handlers/wiki-migrate.js';
+import { WIKI_CURATE_PAGE } from './jobs/handlers/wiki-curate-page.js';
+import { WIKI_INGEST_TURN } from './jobs/handlers/wiki-ingest-turn.js';
 
 initSentry();
 
@@ -67,6 +70,9 @@ async function main() {
     await boss.createQueue(IMPORT_PARSE_JOB);
     await boss.createQueue(IMPORT_COMMIT_JOB);
     await boss.createQueue(KNOWLEDGE_PARSE_JOB);
+    await boss.createQueue(WIKI_MIGRATE);
+    await boss.createQueue(WIKI_CURATE_PAGE);
+    await boss.createQueue(WIKI_INGEST_TURN);
   } catch (err) {
     logger.error({ err }, '[startup] failed to ensure import queues exist');
   }

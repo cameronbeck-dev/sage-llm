@@ -15,6 +15,21 @@ export default function Memory() {
         <BackButton />
       </header>
       <h1 className="settings-title">Memory</h1>
+      <div
+        className="legacy-banner"
+        style={{
+          background: 'var(--surface-raised, #2a2a2a)',
+          border: '1px solid var(--border, #444)',
+          borderRadius: 6,
+          padding: '8px 12px',
+          marginBottom: 16,
+          fontSize: 13,
+          color: 'var(--text-muted)',
+        }}
+      >
+        Legacy memory view — retiring at the wiki cutover. New facts are extracted to the{' '}
+        <Link to="/facts">Facts</Link> page going forward.
+      </div>
       <div className="memory-tabs">
         <button onClick={() => setTab('entries')} className={tab === 'entries' ? 'active' : ''}>Entries</button>
         <button onClick={() => setTab('summaries')} className={tab === 'summaries' ? 'active' : ''}>Summaries</button>

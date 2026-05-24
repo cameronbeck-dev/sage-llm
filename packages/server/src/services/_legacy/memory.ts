@@ -1,6 +1,6 @@
-import { getPool } from '../db/pool.js';
-import { listMessages } from './messages.js';
-import { chatSync, extractJson, createWhisper } from './docs.js';
+import { getPool } from '../../db/pool.js';
+import { listMessages } from '../messages.js';
+import { chatSync, extractJson, createWhisper } from '../docs.js';
 import type { MemoryEntry, MemoryEntryVersion, SummaryEntryRow, MemoryOp } from '@sage/shared';
 
 // ─── Row mappers ──────────────────────────────────────────────────────────────

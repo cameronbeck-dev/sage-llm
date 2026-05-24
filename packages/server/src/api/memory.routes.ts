@@ -9,7 +9,7 @@ import {
   listAllMemoryEntryVersions,
   listSummaryEntries,
   softDeleteSummaryEntry,
-} from '../services/memory.js';
+} from '../services/_legacy/memory.js';
 
 export const memoryRouter = Router();
 

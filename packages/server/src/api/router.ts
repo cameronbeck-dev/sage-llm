@@ -11,6 +11,9 @@ import { memoryRouter } from './memory.routes.js';
 import { importsRouter } from './imports.routes.js';
 import { knowledgeRouter } from './knowledge.routes.js';
 import { whispersRouter } from './whispers.routes.js';
+import { wikiRouter } from './wiki.routes.js';
+import { factsRouter } from './facts.routes.js';
+import { isWikiEnabled } from '../config/flags.js';
 
 export const apiRouter = Router();
 
@@ -26,6 +29,11 @@ apiRouter.use('/memory', memoryRouter);
 apiRouter.use('/imports', importsRouter);
 apiRouter.use('/knowledge', knowledgeRouter);
 apiRouter.use('/whispers', whispersRouter);
+
+if (isWikiEnabled()) {
+  apiRouter.use('/wiki', wikiRouter);
+  apiRouter.use('/facts', factsRouter);
+}
 
 apiRouter.get('/health', (_req, res) => {
   res.json({ status: 'ok', name: 'sage' });

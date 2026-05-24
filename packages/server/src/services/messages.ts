@@ -102,6 +102,38 @@ export async function updateMessageWhisperActions(
   return rows.length > 0 ? rowToMessage(rows[0]) : null;
 }
 
+export async function appendMessageWhisperActions(
+  messageId: string,
+  newActions: WhisperAction[]
+): Promise<void> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query<{ whisper_actions: WhisperAction[] | null }>(
+      `SELECT whisper_actions FROM messages WHERE id = $1 FOR UPDATE`,
+      [messageId]
+    );
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      console.warn('[appendMessageWhisperActions] message not found:', messageId);
+      return;
+    }
+    const existing = rows[0].whisper_actions ?? [];
+    const merged = [...existing, ...newActions];
+    await client.query(
+      `UPDATE messages SET whisper_actions = $1 WHERE id = $2`,
+      [JSON.stringify(merged), messageId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function updateMessageContent(
   messageId: string,
   content: ContentBlock[]

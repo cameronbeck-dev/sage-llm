@@ -1,23 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { getPool } from '../db/pool.js';
-import { getProvider } from '../providers/registry.js';
-import { getUserSettings } from './settings.js';
-import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
-import { listMessages, createMessage, updateMessageWhisperActions } from './messages.js';
+import { getPool } from '../../db/pool.js';
+import { getProvider } from '../../providers/registry.js';
+import { getUserSettings } from '../settings.js';
+import { getDecryptedCredential, CredentialNotFoundError } from '../credentials.js';
+import { listMessages, createMessage, updateMessageWhisperActions } from '../messages.js';
 import { listMemoryEntries, applyMemoryOps } from './memory.js';
 import { listPacks } from './knowledge.js';
 import { insertOrphan, findPendingClusters, loadClusterOrphans, markConsolidated } from './orphans.js';
-import { buildTriagePrompt } from '../prompts/triage.js';
-import { buildDedupPrompt } from '../prompts/dedup.js';
-import { buildConsolidationPrompt } from '../prompts/consolidation.js';
-import { extractJson } from './docs.js';
-import { chunkText, insertChunks } from './knowledge-chunker.js';
-import { logger } from '../logger.js';
-import { PRE_TRIAGE_LABELS, MEMORY_LABELS, EXISTING_PACK_LABELS, ORPHAN_LABELS, CONSOLIDATION_LABELS, pickRandom } from '../prompts/indicator-copy.js';
+import { buildTriagePrompt } from '../../prompts/_legacy/triage.js';
+import { buildDedupPrompt } from '../../prompts/_legacy/dedup.js';
+import { buildConsolidationPrompt } from '../../prompts/_legacy/consolidation.js';
+import { extractJson } from '../docs.js';
+import { chunkText, insertChunks } from '../knowledge-chunker.js';
+import { logger } from '../../logger.js';
+import { PRE_TRIAGE_LABELS, MEMORY_LABELS, EXISTING_PACK_LABELS, ORPHAN_LABELS, CONSOLIDATION_LABELS, pickRandom } from '../../prompts/_legacy/indicator-copy.js';
 import type { ContentBlock, MemoryOp, WhisperAction, SSEChunk } from '@sage/shared';
-import type { TriageOutput } from '../prompts/triage.js';
-import type { DedupOutput } from '../prompts/dedup.js';
-import type { ConsolidationOutput } from '../prompts/consolidation.js';
+import type { TriageOutput } from '../../prompts/_legacy/triage.js';
+import type { DedupOutput } from '../../prompts/_legacy/dedup.js';
+import type { ConsolidationOutput } from '../../prompts/_legacy/consolidation.js';
 
 // TODO: if user pack count crosses ~20, triage cost and accuracy will degrade — add a hard cap.
 

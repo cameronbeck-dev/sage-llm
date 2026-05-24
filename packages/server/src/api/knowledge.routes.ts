@@ -19,7 +19,7 @@ import {
   attachPackToConversation,
   detachPackFromConversation,
   getAttachedPackIds,
-} from '../services/knowledge.js';
+} from '../services/_legacy/knowledge.js';
 
 export const knowledgeRouter = Router();
 

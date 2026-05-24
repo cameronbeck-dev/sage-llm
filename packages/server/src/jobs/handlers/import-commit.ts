@@ -2,7 +2,7 @@ import type { Job } from 'pg-boss';
 import { getPool } from '../../db/pool.js';
 import { getObjectStore } from '../../storage/index.js';
 import { parseImport } from '../../services/imports.js';
-import { summarizeConversation, writeSummaryEntry, extractFactsFromSummaries, applyMemoryOps } from '../../services/memory.js';
+import { summarizeConversation, writeSummaryEntry, extractFactsFromSummaries, applyMemoryOps } from '../../services/_legacy/memory.js';
 import { logger } from '../../logger.js';
 
 export const IMPORT_COMMIT_JOB = 'import-commit';
