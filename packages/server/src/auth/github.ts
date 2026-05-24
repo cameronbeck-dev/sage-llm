@@ -9,14 +9,22 @@ async function seedWelcomeConversation(userId: string): Promise<void> {
   try {
     await client.query('BEGIN');
 
-    // Create welcome conversation
+    const { rowCount } = await client.query(
+      `UPDATE users SET welcomed_at = now() WHERE id = $1 AND welcomed_at IS NULL`,
+      [userId]
+    );
+
+    if (!rowCount) {
+      await client.query('ROLLBACK');
+      return;
+    }
+
     const { rows: convoRows } = await client.query<{ id: string }>(
       `INSERT INTO conversations (user_id, title) VALUES ($1, $2) RETURNING id`,
       [userId, 'Welcome']
     );
     const convoId = convoRows[0].id;
 
-    // Get welcome template
     const { rows: templateRows } = await client.query<{ content: string }>(
       'SELECT content FROM welcome_templates ORDER BY created_at ASC LIMIT 1'
     );
@@ -28,7 +36,6 @@ async function seedWelcomeConversation(userId: string): Promise<void> {
       );
     }
 
-    // Seed memory_docs with defaults
     await client.query(
       `INSERT INTO memory_docs (user_id, filename, content) VALUES
        ($1, 'AGENTS.md', '# Agents\n\nYou are a helpful AI assistant.'),
