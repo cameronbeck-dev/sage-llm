@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useConversationStore } from '../state/conversationStore.js';
+import { useConversationStore, reconstructToolCalls } from '../state/conversationStore.js';
 import { useAuthStore } from '../state/authStore.js';
 import { useSettingsStore } from '../state/settingsStore.js';
 import { useKnowledgeStore } from '../state/knowledgeStore.js';
@@ -64,6 +64,10 @@ export default function Chat() {
     appendExtractionDestinations,
     clearExtractionDestination,
     clearAllExtractions,
+    startToolCall,
+    completeToolCall,
+    failToolCall,
+    toolCalls,
   } = useConversationStore();
 
   const { sageState, sageMessage, startStreaming, stopStreaming, onStreamError } = useSageState();
@@ -335,12 +339,11 @@ export default function Chat() {
                 const data = await msgRes.json() as Conversation & { messages: Message[] };
                 useConversationStore.setState((s) => {
                   const responseTimeById = new Map(s.activeMessages.filter(m => m.responseTimeMs != null).map(m => [m.id, m.responseTimeMs!]));
-                  return {
-                    activeMessages: data.messages.map(m => {
-                      const preservedTime = responseTimeById.get(m.id);
-                      return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
-                    }),
-                  };
+                  const remapped = data.messages.map(m => {
+                    const preservedTime = responseTimeById.get(m.id);
+                    return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
+                  });
+                  return { activeMessages: remapped, toolCalls: reconstructToolCalls(remapped) };
                 });
               }
             }
@@ -361,16 +364,30 @@ export default function Chat() {
                 const data = await msgRes.json() as Conversation & { messages: Message[] };
                 useConversationStore.setState((s) => {
                   const responseTimeById = new Map(s.activeMessages.filter(m => m.responseTimeMs != null).map(m => [m.id, m.responseTimeMs!]));
-                  return {
-                    activeMessages: data.messages.map(m => {
-                      const preservedTime = responseTimeById.get(m.id);
-                      return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
-                    }),
-                  };
+                  const remapped = data.messages.map(m => {
+                    const preservedTime = responseTimeById.get(m.id);
+                    return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
+                  });
+                  return { activeMessages: remapped, toolCalls: reconstructToolCalls(remapped) };
                 });
               }
             } else if (chunk.stage === 'finished') {
               clearAllExtractions(conversationId);
+            }
+          } else if (chunk.type === 'tool_call_started') {
+            const streamingMsgId = useConversationStore.getState().thinkingMessageId;
+            if (streamingMsgId) {
+              startToolCall(streamingMsgId, { id: chunk.id, name: chunk.name, input: chunk.input });
+            }
+          } else if (chunk.type === 'tool_call_result') {
+            const streamingMsgId = useConversationStore.getState().thinkingMessageId;
+            if (streamingMsgId) {
+              completeToolCall(streamingMsgId, chunk.id, chunk.result);
+            }
+          } else if (chunk.type === 'tool_call_error') {
+            const streamingMsgId = useConversationStore.getState().thinkingMessageId;
+            if (streamingMsgId) {
+              failToolCall(streamingMsgId, chunk.id, chunk.error);
             }
           } else if (chunk.type === 'done' || chunk.type === 'error') {
             if (chunk.type === 'error' && chunk.error) {
@@ -389,12 +406,11 @@ export default function Chat() {
                   const data = await msgRes.json() as Conversation & { messages: Message[] };
                   useConversationStore.setState((s) => {
                     const responseTimeById = new Map(s.activeMessages.filter(m => m.responseTimeMs != null).map(m => [m.id, m.responseTimeMs!]));
-                    return {
-                      activeMessages: data.messages.map(m => {
-                        const preservedTime = responseTimeById.get(m.id);
-                        return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
-                      }),
-                    };
+                    const remapped = data.messages.map(m => {
+                      const preservedTime = responseTimeById.get(m.id);
+                      return preservedTime != null ? { ...m, responseTimeMs: preservedTime } : m;
+                    });
+                    return { activeMessages: remapped, toolCalls: reconstructToolCalls(remapped) };
                   });
                   if (!indicatorFlipped) {
                     const responseTimeMs = Date.now() - streamStartRef.current;
@@ -613,6 +629,14 @@ export default function Chat() {
               let running = 0;
               const enriched = activeMessages
                 .filter((m) => m.role !== 'system_internal')
+                .filter((m) => {
+                  // Hide user rows that only carry tool_result blocks — they belong
+                  // visually with the preceding assistant turn's tool-call indicators.
+                  if (m.role === 'user' && m.content.length > 0 && m.content.every((b) => b.type === 'tool_result')) {
+                    return false;
+                  }
+                  return true;
+                })
                 .map((m) => {
                   if (m.role === 'assistant' && typeof m.costUsd === 'number') running += m.costUsd;
                   return { msg: m, sessionRunningUsd: running };
@@ -623,7 +647,18 @@ export default function Chat() {
                     const text = msg.content
                       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
                       .map((b) => b.text)
-                      .join('');
+                      .join('')
+                      .trim();
+                    const msgToolCalls = msg.role === 'assistant' ? (toolCalls[msg.id] ?? []) : [];
+                    // Skip intermediate assistant turns that only emitted tool_use blocks —
+                    // their indicators are reattached to the turn's final assistant bubble.
+                    const isIntermediateToolUseOnly =
+                      msg.role === 'assistant'
+                      && text.length === 0
+                      && msg.content.some((b) => b.type === 'tool_use');
+                    if (isIntermediateToolUseOnly && msg.id !== thinkingMessageId) {
+                      return null;
+                    }
                     return (
                       <div key={msg.id} className={msg.role === 'whisper' ? 'chat-whisper-row' : 'chat-message-row'}>
                         <MessageBubble
@@ -635,6 +670,7 @@ export default function Chat() {
                           costUsd={msg.role === 'assistant' ? msg.costUsd : undefined}
                           sessionRunningUsd={msg.role === 'assistant' && msg.costUsd != null ? sessionRunningUsd : undefined}
                           responseTimeMs={msg.role === 'assistant' ? msg.responseTimeMs : undefined}
+                          toolCalls={msg.role === 'assistant' ? (toolCalls[msg.id] ?? []) : undefined}
                         />
                         {msg.role === 'whisper' && msg.whisperActions && (
                           <WhisperActions message={msg} onUpdate={updateMessage} />

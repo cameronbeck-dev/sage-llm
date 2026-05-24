@@ -9,22 +9,16 @@ import { getCurrentPeriodSpendCents } from './usage.js';
 import { searchChunks, getAttachedPackIds, listPacks } from './knowledge.js';
 import { extractAfterTurn } from './extraction.js';
 import { buildPackLiteracyBlock } from '../prompts/pack-literacy.js';
-import type { ContentBlock } from '@sage/shared';
+import { getAllTools, getToolSchemas, getToolByName } from '../tools/registry.js';
+import { consumeToolCallToken } from '../middleware/rateLimit.js';
+import type { ContentBlock, SSEChunk } from '@sage/shared';
+import type { ChatRequest } from '../providers/types.js';
 
-export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete' | 'extraction_progress';
-  delta?: string;
-  usage?: { inputTokens: number; outputTokens: number };
-  error?: string;
-  truncated?: boolean;
-  whisperText?: string;
-  title?: string;
-  costUsd?: number;
-  stage?: 'started' | 'destinations_known' | 'destination_complete' | 'finished';
-  label?: string;
-  indicators?: Array<{ id: string; label: string }>;
-  completedId?: string;
-}
+export type { SSEChunk };
+
+const MAX_TOOL_ROUNDS = 8;
+
+const WEB_TOOL_LITERACY = `You have access to two web tools: \`web_search\` (searches the web for a query) and \`web_fetch\` (fetches a specific URL and returns its main content). Use them when the user asks about current events, specific URLs, or facts you might be uncertain about. Always cite sources as Markdown links inline in your response — the UI will surface a Sources footer automatically. Prefer \`web_search\` first, then \`web_fetch\` on specific results when more detail is needed.`;
 
 async function getDefaultAgentFile(userId: string): Promise<string | null> {
   const pool = getPool();
@@ -109,10 +103,6 @@ export async function* chatStream(
   }
 
   systemParts.push('Memory policy: Do not mention memory updates in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
-  const system = systemParts.join('\n\n---\n\n');
-
-  const userContent: ContentBlock[] = [{ type: 'text', text: userMessage }];
-  const userMessageId = await createMessage(conversationId, 'user', userContent);
 
   // Resolve provider/model: per-request override > conversation preferred > user settings
   let resolvedProviderId = settings.activeProvider;
@@ -156,101 +146,271 @@ export async function* chatStream(
   const provider = getProvider(resolvedProviderId);
   const model = resolvedModel;
 
-  const providerMessages = history
+  // Inject tool literacy if provider supports tools
+  if (provider.supportsTools) {
+    systemParts.push(WEB_TOOL_LITERACY);
+  }
+  const system = systemParts.join('\n\n---\n\n');
+
+  const userContent: ContentBlock[] = [{ type: 'text', text: userMessage }];
+  const userMessageId = await createMessage(conversationId, 'user', userContent);
+
+  // Build provider messages from history + current user turn
+  // Translate history rows: text-only rows become strings, rows with tool_use/tool_result blocks pass through
+  const providerMessages: ChatRequest['messages'] = history
     .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content
-        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-        .map((b) => b.text)
-        .join(''),
-    }))
+    .map((m) => {
+      const hasToolBlocks = m.content.some((b) => b.type === 'tool_use' || b.type === 'tool_result');
+      if (hasToolBlocks) {
+        return { role: m.role as 'user' | 'assistant', content: m.content };
+      }
+      return {
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+          .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+          .map((b) => b.text)
+          .join(''),
+      };
+    })
     .concat([{ role: 'user', content: userMessage }]);
 
-  const chatReq = { model, messages: providerMessages, system };
+  const tools = provider.supportsTools ? getToolSchemas() : undefined;
 
-  let fullText = '';
-  let fullThinking = '';
-  let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
+  let toolRound = 0;
+  let finalAssistantMessageId: string | undefined;
 
-  try {
-    for await (const chunk of provider.chatStream(chatReq, creds)) {
-      if (chunk.type === 'delta' && chunk.text) {
-        fullText += chunk.text;
-        yield { type: 'text', delta: chunk.text };
-      } else if (chunk.type === 'thinking' && chunk.text) {
-        fullThinking += chunk.text;
-        yield { type: 'thinking', delta: chunk.text };
-      } else if (chunk.type === 'done') {
-        finalUsage = chunk.usage;
-        if (chunk.truncated) {
-          const truncationNotice = '\n\n[Output truncated due to token limit — response was cut off]';
-          fullText += truncationNotice;
-          const truncatedCostUsd = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
+  // Outer loop for tool rounds
+  while (true) {
+    const chatReq: ChatRequest = { model, messages: providerMessages, system, tools };
+
+    let fullText = '';
+    let fullThinking = '';
+    let finalUsage: { inputTokens: number; outputTokens: number } | undefined;
+    const pendingToolCalls: Array<{ id: string; name: string; input: unknown }> = [];
+    let streamError: string | undefined;
+    let truncated = false;
+
+    // Track currently-building tool call for name resolution
+    const inFlightToolNames = new Map<string, string>();
+
+    try {
+      for await (const chunk of provider.chatStream(chatReq, creds)) {
+        if (chunk.type === 'delta' && chunk.text) {
+          fullText += chunk.text;
+          yield { type: 'text', delta: chunk.text };
+        } else if (chunk.type === 'thinking' && chunk.text) {
+          fullThinking += chunk.text;
+          yield { type: 'thinking', delta: chunk.text };
+        } else if (chunk.type === 'tool_call') {
+          if (chunk.name && !inFlightToolNames.has(chunk.id)) {
+            inFlightToolNames.set(chunk.id, chunk.name);
+          }
+          if (chunk.complete && chunk.input !== undefined) {
+            const name = chunk.name ?? inFlightToolNames.get(chunk.id) ?? '';
+            pendingToolCalls.push({ id: chunk.id, name, input: chunk.input });
+          }
+        } else if (chunk.type === 'done') {
+          finalUsage = chunk.usage;
+          truncated = chunk.truncated ?? false;
+          if (truncated) {
+            const truncationNotice = '\n\n[Output truncated due to token limit — response was cut off]';
+            fullText += truncationNotice;
+            const truncatedCostUsd = finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined;
+            finalAssistantMessageId = await createMessage(conversationId, 'assistant', [
+              { type: 'text', text: fullText },
+            ], resolvedProviderId, model, finalUsage, truncatedCostUsd, fullThinking || undefined);
+            yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCostUsd };
+            yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
+            return;
+          }
+        } else if (chunk.type === 'error') {
+          // Providers that cannot handle tools should set supportsTools: false rather than
+          // emitting a sentinel error — that way tools are never forwarded in the first place.
+          streamError = chunk.error;
+          yield { type: 'error', error: chunk.error };
           await createMessage(conversationId, 'assistant', [
-            { type: 'text', text: fullText },
-          ], resolvedProviderId, model, finalUsage, truncatedCostUsd, fullThinking || undefined);
-          yield { type: 'done', usage: finalUsage, truncated: true, costUsd: truncatedCostUsd };
-          yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
+            { type: 'text', text: '[Error: ' + (chunk.error ?? 'unknown') + ']' },
+          ]);
           return;
         }
-      } else if (chunk.type === 'error') {
-        yield { type: 'error', error: chunk.error };
-        await createMessage(conversationId, 'assistant', [
-          { type: 'text', text: '[Error: ' + (chunk.error ?? 'unknown') + ']' },
+      }
+    } catch (err) {
+      yield { type: 'error', error: (err as Error).message };
+      return;
+    }
+
+    if (streamError) return;
+
+    // No tool calls — this is the final assistant turn
+    if (pendingToolCalls.length === 0) {
+      let costUsd: number | undefined;
+      if (finalUsage && provider.estimateCost) {
+        costUsd = provider.estimateCost(model, finalUsage);
+      }
+
+      finalAssistantMessageId = await createMessage(
+        conversationId,
+        'assistant',
+        [{ type: 'text', text: fullText }],
+        resolvedProviderId,
+        model,
+        finalUsage,
+        costUsd,
+        fullThinking || undefined
+      );
+
+      yield { type: 'response_complete', costUsd };
+      yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
+      yield* finishTurn(userId, conversationId, userMessageId, finalAssistantMessageId, history.length, userMessage);
+      return;
+    }
+
+    // Tool calls pending
+    if (++toolRound >= MAX_TOOL_ROUNDS) {
+      // Persist any text produced in this round
+      if (fullText) {
+        let costUsd: number | undefined;
+        if (finalUsage && provider.estimateCost) costUsd = provider.estimateCost(model, finalUsage);
+        finalAssistantMessageId = await createMessage(
+          conversationId, 'assistant', [{ type: 'text', text: fullText }],
+          resolvedProviderId, model, finalUsage, costUsd, fullThinking || undefined
+        );
+      }
+      yield { type: 'whisper', whisperText: 'Reached tool-call limit for this turn.' };
+      yield { type: 'response_complete' };
+      if (finalAssistantMessageId) {
+        yield* finishTurn(userId, conversationId, userMessageId, finalAssistantMessageId, history.length, userMessage);
+      }
+      return;
+    }
+
+    // Persist intermediate assistant turn (tool_use blocks + any text)
+    const assistantBlocks: ContentBlock[] = [];
+    if (fullText) assistantBlocks.push({ type: 'text', text: fullText });
+    for (const tc of pendingToolCalls) {
+      assistantBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+    }
+    await createMessage(
+      conversationId, 'assistant', assistantBlocks,
+      resolvedProviderId, model, finalUsage,
+      finalUsage && provider.estimateCost ? provider.estimateCost(model, finalUsage) : undefined,
+      fullThinking || undefined
+    );
+
+    // Execute each tool call sequentially
+    const toolResultBlocks: ContentBlock[] = [];
+    for (const tc of pendingToolCalls) {
+      let rateLimited = false;
+      try {
+        await consumeToolCallToken(userId, tc.name);
+      } catch {
+        rateLimited = true;
+      }
+
+      if (rateLimited) {
+        yield { type: 'tool_call_error', id: tc.id, name: tc.name, error: 'rate_limited' };
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: 'Error: rate_limited',
+          is_error: true,
+        });
+        continue;
+      }
+
+      const tool = getToolByName(tc.name);
+      if (!tool) {
+        yield { type: 'tool_call_error', id: tc.id, name: tc.name, error: `unknown_tool: ${tc.name}` };
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: `Error: unknown tool "${tc.name}"`,
+          is_error: true,
+        });
+        continue;
+      }
+
+      yield { type: 'tool_call_started', id: tc.id, name: tc.name, input: tc.input };
+
+      // Record system_internal with provider=null so by-provider rollup doesn't pick it up
+      await createMessage(
+        conversationId, 'system_internal',
+        [{ type: 'text', text: `[${tc.name}] ${JSON.stringify(tc.input).slice(0, 200)}` }],
+        undefined, undefined, undefined, 0
+      );
+
+      let result: Awaited<ReturnType<typeof tool.execute>>;
+      try {
+        const racePromise = Promise.race([
+          tool.execute(tc.input, { userId, conversationId }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
         ]);
-        return;
+        result = await racePromise;
+      } catch (err) {
+        const errorMsg = (err as Error).message;
+        yield { type: 'tool_call_error', id: tc.id, name: tc.name, error: errorMsg };
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: `Error: ${errorMsg}`,
+          is_error: true,
+        });
+        continue;
+      }
+
+      if (result.ok) {
+        yield { type: 'tool_call_result', id: tc.id, name: tc.name, result: result.data };
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: JSON.stringify(result.data),
+        });
+      } else {
+        yield { type: 'tool_call_error', id: tc.id, name: tc.name, error: result.error };
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: `Error: ${result.error}`,
+          is_error: true,
+        });
       }
     }
-  } catch (err) {
-    yield { type: 'error', error: (err as Error).message };
-    return;
+
+    // Persist synthetic user turn with tool_result blocks
+    await createMessage(conversationId, 'user', toolResultBlocks);
+
+    // Update providerMessages for the next round
+    providerMessages.push({ role: 'assistant', content: assistantBlocks });
+    providerMessages.push({ role: 'user', content: toolResultBlocks });
   }
+}
 
-  let costUsd: number | undefined;
-  if (finalUsage && provider.estimateCost) {
-    costUsd = provider.estimateCost(model, finalUsage);
-  }
-
-  const assistantMessageId = await createMessage(
-    conversationId,
-    'assistant',
-    [{ type: 'text', text: fullText }],
-    resolvedProviderId,
-    model,
-    finalUsage,
-    costUsd,
-    fullThinking || undefined
-  );
-
-  yield { type: 'response_complete', costUsd };
-
-  // Budget check — warn once per calendar month when budget is crossed
-  yield* maybeYieldBudgetWhisper(userId, conversationId, settings);
-
+async function* finishTurn(
+  userId: string,
+  conversationId: string,
+  userMessageId: string,
+  assistantMessageId: string,
+  historyLength: number,
+  userMessage: string
+): AsyncIterable<SSEChunk> {
   let destinationCompleteCount = 0;
   for await (const chunk of extractAfterTurn(userId, conversationId, userMessageId, assistantMessageId)) {
-    if (chunk.stage === 'destination_complete') destinationCompleteCount++;
+    if (chunk.type === 'extraction_progress' && chunk.stage === 'destination_complete') destinationCompleteCount++;
     yield chunk;
   }
 
-  // Signal client to refetch messages (picks up any whispers created during extraction).
-  // Skipped when extraction emitted destination_complete events — each of those already
-  // triggers a refetch in the client chunk handler.
   if (destinationCompleteCount === 0) {
     yield { type: 'whisper', whisperText: '' };
   }
 
-  // If this is the first message of a new conversation, derive title from user message
-  // and update the conversation. Also send title to client for sidebar update.
-  if (history.length === 0 && userMessage.trim()) {
+  if (historyLength === 0 && userMessage.trim()) {
     const titleFromMsg = userMessage.trim().slice(0, 80);
-    const { updateConversation: updateConvo } = await import('./conversations.js');
-    await updateConvo(userId, conversationId, { title: titleFromMsg });
+    const { updateConversation } = await import('./conversations.js');
+    await updateConversation(userId, conversationId, { title: titleFromMsg });
     yield { type: 'title', title: titleFromMsg };
   }
 
-  yield { type: 'done', usage: finalUsage };
+  yield { type: 'done' };
 }
 
 async function* maybeYieldBudgetWhisper(

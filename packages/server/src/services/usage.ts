@@ -1,5 +1,5 @@
 import { getPool } from '../db/pool.js';
-import type { UsageReport } from '@sage/shared';
+import type { UsageReport, ToolUsageCounts } from '@sage/shared';
 
 export async function getUsageReport(userId: string, from?: string, to?: string): Promise<UsageReport> {
   const pool = getPool();
@@ -69,7 +69,32 @@ export async function getUsageReport(userId: string, from?: string, to?: string)
 
   const totalUsd = byDay.reduce((s, d) => s + d.costUsd, 0);
 
-  return { byDay, byProviderModel, topConversations, totalUsd, periodStart, periodEnd };
+  const toolUsageResult = await pool.query<{ tag: string; cnt: string }>(
+    `SELECT
+       CASE
+         WHEN m.content::text LIKE '%[web_search]%' THEN 'web_search'
+         WHEN m.content::text LIKE '%[web_fetch]%' THEN 'web_fetch'
+       END AS tag,
+       COUNT(*) AS cnt
+     FROM messages m
+     JOIN conversations c ON c.id = m.conversation_id
+     WHERE c.user_id = $1
+       AND m.created_at >= $2
+       AND m.created_at <= $3
+       AND m.role = 'system_internal'
+       AND m.provider IS NULL
+       AND (m.content::text LIKE '%[web_search]%' OR m.content::text LIKE '%[web_fetch]%')
+     GROUP BY tag`,
+    [userId, periodStart, periodEnd]
+  );
+
+  const toolUsage: ToolUsageCounts = { web_search: { count: 0 }, web_fetch: { count: 0 } };
+  for (const row of toolUsageResult.rows) {
+    if (row.tag === 'web_search') toolUsage.web_search.count = Number(row.cnt);
+    if (row.tag === 'web_fetch') toolUsage.web_fetch.count = Number(row.cnt);
+  }
+
+  return { byDay, byProviderModel, topConversations, totalUsd, periodStart, periodEnd, toolUsage };
 }
 
 export async function getCurrentPeriodSpendCents(userId: string): Promise<number> {

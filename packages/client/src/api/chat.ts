@@ -1,17 +1,5 @@
-export interface SSEChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'whisper' | 'title' | 'response_complete' | 'extraction_progress';
-  delta?: string;
-  usage?: { inputTokens: number; outputTokens: number };
-  error?: string;
-  truncated?: boolean;
-  whisperText?: string;
-  title?: string;
-  costUsd?: number;
-  stage?: 'started' | 'destinations_known' | 'destination_complete' | 'finished';
-  label?: string;
-  indicators?: Array<{ id: string; label: string }>;
-  completedId?: string;
-}
+export type { SSEChunk } from '@sage/shared';
+import type { SSEChunk } from '@sage/shared';
 
 export async function* streamChat(
   conversationId: string,

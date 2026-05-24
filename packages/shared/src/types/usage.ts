@@ -17,6 +17,11 @@ export interface ConversationSpend {
   messageCount: number
 }
 
+export interface ToolUsageCounts {
+  web_search: { count: number }
+  web_fetch: { count: number }
+}
+
 export interface UsageReport {
   byDay: DailySpend[]
   byProviderModel: ProviderModelSpend[]
@@ -24,6 +29,7 @@ export interface UsageReport {
   totalUsd: number
   periodStart: string
   periodEnd: string
+  toolUsage?: ToolUsageCounts
 }
 
 export interface BudgetSettings {

@@ -132,6 +132,34 @@ export default function Usage() {
             </section>
           )}
 
+          {report.toolUsage && (report.toolUsage.web_search.count > 0 || report.toolUsage.web_fetch.count > 0) && (
+            <section className="settings-section pixel-border">
+              <h2 className="settings-section__title">Web Tools</h2>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th className="data-table__th">Tool</th>
+                    <th className="data-table__th data-table__th--right">Calls</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.toolUsage.web_search.count > 0 && (
+                    <tr>
+                      <td className="data-table__td">web_search</td>
+                      <td className="data-table__td data-table__td--right">{report.toolUsage.web_search.count}</td>
+                    </tr>
+                  )}
+                  {report.toolUsage.web_fetch.count > 0 && (
+                    <tr>
+                      <td className="data-table__td">web_fetch</td>
+                      <td className="data-table__td data-table__td--right">{report.toolUsage.web_fetch.count}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </section>
+          )}
+
           {report.byDay.length === 0 && report.byProviderModel.length === 0 && report.topConversations.length === 0 && (
             <p className="settings-info u-muted">No usage data for this period.</p>
           )}

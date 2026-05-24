@@ -50,6 +50,10 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 - Node.js 20+
 - PostgreSQL 14+ (or a hosted provider like Supabase, Neon, Render)
 - GitHub OAuth App ([create one](https://github.com/settings/developers))
+- Docker Desktop — required for the SearXNG container that powers `web_search`. Without it, chat still works but web tools are disabled.
+  - **Windows**: `winget install -e --id Docker.DockerDesktop` (then launch Docker Desktop once to accept terms and let it initialise the WSL2 backend)
+  - **macOS**: `brew install --cask docker`
+  - **Linux**: [official install guide](https://docs.docker.com/engine/install/)
 
 ---
 
@@ -107,23 +111,23 @@ OBJECT_STORE=local
 3. **Authorization callback URL**: `http://localhost:3001/api/auth/github/callback`
 4. Copy Client ID and Secret into `.env`
 
-### 4. Run Migrations
-
-```bash
-npm run migrate
-```
-
-Migrations also run automatically on server startup when `DATABASE_URL` is set.
-
-### 5. Start Development
+### 4. Start Development
 
 ```bash
 npm run dev
 ```
 
+This single command starts the SearXNG container (`docker compose up -d searxng`), runs any pending database migrations, and spins up the server and client. Open `http://localhost:5173`.
+
 - **Server**: `http://localhost:3001`
 - **Client**: `http://localhost:5173` (Vite dev server with HMR)
 - **Worker**: job-queue worker process (optional — restarts independently; exits without killing server/client)
+
+When you're done for the day, shut down the SearXNG container with:
+
+```bash
+npm run dev:down
+```
 
 ### 6. Add Your API Key
 
@@ -275,20 +279,22 @@ After every assistant response, a unified triage LLM call (`services/extraction.
 |----------|--------|-------|
 | **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo` | API key validated on save |
 | **Anthropic** | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` | Add your Anthropic API key in Settings → API Keys. Older `claude-*-4-5` aliases still resolve and remain billable. |
-| **Minimax** | `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.1` | Uses Anthropic-compatible endpoint |
+| **Minimax** | `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`, `MiniMax-M2.5`, `MiniMax-M2.1` | Uses OpenAI-compatible endpoint (`api.minimax.io/v1`); full tool support |
 
 ### Adding a New Provider
 
 1. Create `packages/server/src/providers/<provider>.ts` implementing `LLMProvider`:
    ```typescript
    interface LLMProvider {
-     id: string;
-     displayName: string;
+     readonly id: string;
+     readonly displayName: string;
+     readonly supportsTools: boolean;
      listModels(creds: ResolvedCredentials): Promise<ModelInfo[]>;
-     *chatStream(req: ChatRequest, creds: ResolvedCredentials): AsyncIterable<ChatChunk>;
-     estimateCost(model: string, usage: Usage): number;
+     chatStream(req: ChatRequest, creds: ResolvedCredentials): AsyncIterable<ChatChunk>;
+     estimateCost?(model: string, usage: Usage): number;
    }
    ```
+   Set `supportsTools: true` if the provider handles the `tools` field in `ChatRequest` and emits `tool_call` chunks.
 2. Import and call `registerProvider(yourProvider)` in `packages/server/src/providers/registry.ts`
 
 ---
@@ -336,11 +342,58 @@ The `Procfile` runs migrations in the release phase before the web process start
 ## Development
 
 ```bash
-npm run dev       # Start server (3001) + client (5173) with hot reload
+npm run dev       # Start SearXNG + server (3001) + client (5173) with hot reload
+npm run dev:down  # Stop SearXNG container when done
 npm run build     # TypeScript compile + Vite client build
-npm run migrate   # Run pending SQL migrations
+npm run migrate   # Run pending SQL migrations manually (also runs automatically on server startup)
 npm test          # Run test suite (if configured)
 ```
+
+---
+
+## Web Tools
+
+Sage supports two agentic web tools available to the LLM during user-facing chat turns:
+
+| Tool | What it does |
+|------|--------------|
+| `web_search` | Queries a self-hosted SearXNG instance (Google, Bing, DuckDuckGo, Wikipedia engines). Returns titles, URLs, and snippets. |
+| `web_fetch` | Fetches a specific URL, extracts readable article text with Mozilla Readability, and returns title + body text. Follows no redirects automatically — returns the redirect target so the model can decide. |
+
+### Search backend
+
+Sage uses [SearXNG](https://searxng.github.io/searxng/) as a self-hosted, privacy-respecting metasearch engine. No third-party search API key is required.
+
+SearXNG starts automatically when you run `npm run dev`. To verify it's up:
+```bash
+curl 'http://localhost:8080/search?q=test&format=json'
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SEARXNG_URL` | `http://searxng:8080` | URL of the SearXNG instance |
+| `SEARXNG_SECRET_KEY` | `changeme` | SearXNG secret key (set in `searxng-config/settings.yml`) |
+| `WEB_FETCH_USER_AGENT` | `Sage/1.0 (+https://sage.local)` | User-agent sent with `web_fetch` requests |
+| `WEB_FETCH_TIMEOUT_MS` | `10000` | HTTP timeout for `web_fetch` in milliseconds |
+| `WEB_FETCH_MAX_BYTES` | `5000000` | Maximum response body size for `web_fetch` |
+
+### SSRF protection
+
+`web_fetch` resolves hostnames via Node.js DNS before making any request, pins the resolved IP to prevent DNS rebinding attacks, and rejects any IP in private, loopback, link-local, or reserved ranges (both IPv4 and IPv6). The validation uses `ipaddr.js` for range classification rather than regex.
+
+### Provider notes
+
+- **Anthropic / OpenAI / MiniMax** — all have `supportsTools: true`; tools are injected automatically. MiniMax uses its OpenAI-compatible endpoint which handles tool calls natively.
+
+### Citations
+
+When `web_search` or `web_fetch` return results, inline Markdown links appear in the assistant response. A collapsible **Sources** footer is rendered below the message text with deduplicated URLs from all tool calls in that turn.
+
+### Rate limits
+
+30 tool calls per user per tool per 5-minute window. Requests over the limit receive a `tool_call_error: rate_limited` response inline; the conversation continues.
 
 ---
 

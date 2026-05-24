@@ -6,6 +6,7 @@ export * from './user.js';
 export * from './usage.js';
 export * from './knowledge.js';
 export * from './whisper.js';
+export * from './sse.js';
 
 // Memory system types
 export interface MemoryDoc {

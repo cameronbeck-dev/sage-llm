@@ -113,3 +113,26 @@ export const importLimiter = rateLimit({
   handler: onLimitReached,
   skipFailedRequests: false,
 });
+
+const TOOL_WINDOW_MS = 5 * 60 * 1000;
+const TOOL_MAX_CALLS = 30;
+
+export async function consumeToolCallToken(userId: string, toolName: string): Promise<void> {
+  const pool = getPool();
+  const key = `tool:${userId}:${toolName}`;
+  const expiry = new Date(Date.now() + TOOL_WINDOW_MS);
+
+  const { rows } = await pool.query<{ hits: number }>(
+    `INSERT INTO rate_limit_hits (key, hits, expiry)
+     VALUES ($1, 1, $2)
+     ON CONFLICT (key) DO UPDATE SET
+       hits = CASE WHEN rate_limit_hits.expiry < now() THEN 1 ELSE rate_limit_hits.hits + 1 END,
+       expiry = CASE WHEN rate_limit_hits.expiry < now() THEN $2 ELSE rate_limit_hits.expiry END
+     RETURNING hits`,
+    [key, expiry]
+  );
+
+  if (rows[0].hits > TOOL_MAX_CALLS) {
+    throw new Error('rate_limited');
+  }
+}

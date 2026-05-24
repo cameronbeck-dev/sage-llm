@@ -2,6 +2,62 @@ import { create } from 'zustand';
 import type { Conversation, Message } from '@sage/shared';
 import type { SageState } from '../hooks/useSageState';
 
+export interface ToolCallUI {
+  id: string;
+  name: string;
+  input: unknown;
+  status: 'running' | 'done' | 'error';
+  result?: unknown;
+  error?: string;
+}
+
+// Rebuild tool-call indicators from persisted `tool_use`/`tool_result` blocks.
+// Accumulated calls are attached to the turn's final assistant message (the
+// one with no tool_use blocks), so the indicators render at the top of the
+// answer bubble — matching the during-streaming UI.
+export function reconstructToolCalls(messages: Message[]): Record<string, ToolCallUI[]> {
+  const result: Record<string, ToolCallUI[]> = {};
+  const resultByToolUseId = new Map<string, { content: string; isError: boolean }>();
+
+  for (const m of messages) {
+    for (const b of m.content) {
+      if (b.type === 'tool_result') {
+        resultByToolUseId.set(b.tool_use_id, { content: b.content, isError: b.is_error ?? false });
+      }
+    }
+  }
+
+  let accumulated: ToolCallUI[] = [];
+  for (const m of messages) {
+    if (m.role !== 'assistant') continue;
+    const toolUseBlocks = m.content.filter(
+      (b): b is { type: 'tool_use'; id: string; name: string; input: unknown } => b.type === 'tool_use'
+    );
+    if (toolUseBlocks.length > 0) {
+      for (const tu of toolUseBlocks) {
+        const r = resultByToolUseId.get(tu.id);
+        if (!r) {
+          accumulated.push({ id: tu.id, name: tu.name, input: tu.input, status: 'running' });
+        } else if (r.isError) {
+          accumulated.push({
+            id: tu.id, name: tu.name, input: tu.input,
+            status: 'error', error: r.content.replace(/^Error:\s*/, ''),
+          });
+        } else {
+          let parsed: unknown = r.content;
+          try { parsed = JSON.parse(r.content); } catch { /* keep raw */ }
+          accumulated.push({ id: tu.id, name: tu.name, input: tu.input, status: 'done', result: parsed });
+        }
+      }
+    } else if (accumulated.length > 0) {
+      result[m.id] = accumulated;
+      accumulated = [];
+    }
+  }
+
+  return result;
+}
+
 interface ConversationState {
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -17,6 +73,7 @@ interface ConversationState {
   showArchived: boolean;
   isLoadingConversations: boolean;
   pendingExtractions: Record<string, Array<{ id: string; label: string }>>;
+  toolCalls: Record<string, ToolCallUI[]>;
   setShowArchived: (value: boolean) => void;
   loadConversations: () => Promise<void>;
   createConversation: (title?: string, seedFromPackId?: string) => Promise<string>;
@@ -38,6 +95,9 @@ interface ConversationState {
   appendExtractionDestinations: (conversationId: string, indicators: Array<{ id: string; label: string }>) => void;
   clearExtractionDestination: (conversationId: string, id: string) => void;
   clearAllExtractions: (conversationId: string) => void;
+  startToolCall: (messageId: string, call: { id: string; name: string; input: unknown }) => void;
+  completeToolCall: (messageId: string, id: string, result: unknown) => void;
+  failToolCall: (messageId: string, id: string, error: string) => void;
 }
 
 let loadConversationsRequestId = 0;
@@ -57,6 +117,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   showArchived: false,
   isLoadingConversations: false,
   pendingExtractions: {},
+  toolCalls: {},
 
   setShowArchived(value: boolean) {
     set({ showArchived: value });
@@ -117,7 +178,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (!res.ok) return;
     const data = (await res.json()) as Conversation & { messages: Message[] };
     const { messages: _, ...convoFields } = data;
-    set({ activeConversation: convoFields, activeMessages: data.messages });
+    set({
+      activeConversation: convoFields,
+      activeMessages: data.messages,
+      toolCalls: reconstructToolCalls(data.messages),
+    });
   },
 
   setThinkingMessage(id) {
@@ -282,5 +347,45 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({
       pendingExtractions: { ...s.pendingExtractions, [conversationId]: [] },
     }));
+  },
+
+  startToolCall(messageId, call) {
+    set((s) => {
+      const existing = s.toolCalls[messageId] ?? [];
+      return {
+        toolCalls: {
+          ...s.toolCalls,
+          [messageId]: [...existing, { ...call, status: 'running' }],
+        },
+      };
+    });
+  },
+
+  completeToolCall(messageId, id, result) {
+    set((s) => {
+      const existing = s.toolCalls[messageId] ?? [];
+      return {
+        toolCalls: {
+          ...s.toolCalls,
+          [messageId]: existing.map((tc) =>
+            tc.id === id ? { ...tc, status: 'done', result } : tc
+          ),
+        },
+      };
+    });
+  },
+
+  failToolCall(messageId, id, error) {
+    set((s) => {
+      const existing = s.toolCalls[messageId] ?? [];
+      return {
+        toolCalls: {
+          ...s.toolCalls,
+          [messageId]: existing.map((tc) =>
+            tc.id === id ? { ...tc, status: 'error', error } : tc
+          ),
+        },
+      };
+    });
   },
 }));
