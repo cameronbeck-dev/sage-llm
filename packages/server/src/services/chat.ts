@@ -3,6 +3,7 @@ import { getProvider, listProviders } from '../providers/registry.js';
 import { listMessages, createMessage } from './messages.js';
 import { getUserSettings, updateUserSettings } from './settings.js';
 import { getDecryptedCredential, CredentialNotFoundError } from './credentials.js';
+import { resolveRoleModel } from './settings/roleModel.js';
 import { createWhisper } from './docs.js';
 import { renderMemoryMarkdown, renderSummariesBlock, getExistingSummaryConversationIds, summarizeConversation } from './_legacy/memory.js';
 import { getCurrentPeriodSpendCents } from './usage.js';
@@ -146,9 +147,10 @@ export async function* chatStream(
 
   systemParts.push('Memory policy: Do not mention memory updates in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
 
-  // Resolve provider/model: per-request override > conversation preferred > user settings
-  let resolvedProviderId = settings.activeProvider;
-  let resolvedModel = settings.activeModel;
+  // Resolve provider/model: per-request override > conversation preferred > role model (chat)
+  let resolvedProviderId: string = '';
+  let resolvedModel: string = '';
+  let apiKey: string = '';
 
   let usedOverride = false;
   if (override?.provider && override?.model) {
@@ -172,16 +174,28 @@ export async function* chatStream(
     });
   }
 
-  let apiKey: string;
-  try {
-    apiKey = await getDecryptedCredential(userId, resolvedProviderId);
-  } catch (err) {
-    if (err instanceof CredentialNotFoundError) {
-      yield { type: 'error', error: `No API key configured for ${resolvedProviderId}. Add one in Settings.` };
+  if (usedOverride || (convo?.preferredProvider && convo?.preferredModel)) {
+    const pid = resolvedProviderId!;
+    try {
+      apiKey = await getDecryptedCredential(userId, pid);
+    } catch (err) {
+      if (err instanceof CredentialNotFoundError) {
+        yield { type: 'error', error: `No API key configured for ${pid}. Add one in Settings.` };
+        return;
+      }
+      yield { type: 'error', error: (err as Error).message };
       return;
     }
-    yield { type: 'error', error: (err as Error).message };
-    return;
+  } else {
+    try {
+      const resolved = await resolveRoleModel(userId, 'chat');
+      resolvedProviderId = resolved.provider;
+      resolvedModel = resolved.model;
+      apiKey = resolved.apiKey;
+    } catch (err) {
+      yield { type: 'error', error: (err as Error).message };
+      return;
+    }
   }
 
   const creds = { apiKey };

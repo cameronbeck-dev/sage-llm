@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
 import { getUserSettings, updateUserSettings } from '../services/settings.js';
+import type { RoleModel } from '../services/settings.js';
 import {
   storeCredential,
   deleteCredential,
@@ -8,6 +9,7 @@ import {
   CredentialValidationError,
   CredentialNotFoundError,
 } from '../services/credentials.js';
+import { issueToken, listTokens, revokeToken } from '../services/auth/tokens.js';
 import { mutationLimiter } from '../middleware/rateLimit.js';
 
 export const settingsRouter = Router();
@@ -28,15 +30,41 @@ settingsRouter.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-// PUT /settings — update user settings (provider, model, theme)
+
+// PUT /settings — update user settings (provider, model, theme, role models)
 settingsRouter.put('/', requireAuth, mutationLimiter, async (req, res, next) => {
   try {
-    const { activeProvider, activeModel, theme } = req.body as {
+    const { activeProvider, activeModel, theme, chatModel, wikiMaintenanceModel, factExtractionModel } = req.body as {
       activeProvider?: string;
       activeModel?: string;
       theme?: string;
+      chatModel?: RoleModel | null;
+      wikiMaintenanceModel?: RoleModel | null;
+      factExtractionModel?: RoleModel | null;
     };
-    await updateUserSettings(req.session!.userId!, { activeProvider, activeModel, theme });
+
+    function validateRoleModel(rm: unknown, fieldName: string): RoleModel | null | undefined {
+      if (rm === undefined) return undefined;
+      if (rm === null) return null;
+      if (typeof rm !== 'object' || typeof (rm as RoleModel).provider !== 'string' || !(rm as RoleModel).provider
+        || typeof (rm as RoleModel).model !== 'string' || !(rm as RoleModel).model) {
+        throw Object.assign(new Error(`${fieldName} must be null or {provider, model} with non-empty strings`), { status: 400 });
+      }
+      return rm as RoleModel;
+    }
+
+    const validatedChatModel = validateRoleModel(chatModel, 'chatModel');
+    const validatedWikiModel = validateRoleModel(wikiMaintenanceModel, 'wikiMaintenanceModel');
+    const validatedFactModel = validateRoleModel(factExtractionModel, 'factExtractionModel');
+
+    await updateUserSettings(req.session!.userId!, {
+      activeProvider,
+      activeModel,
+      theme,
+      ...(validatedChatModel !== undefined ? { chatModel: validatedChatModel } : {}),
+      ...(validatedWikiModel !== undefined ? { wikiMaintenanceModel: validatedWikiModel } : {}),
+      ...(validatedFactModel !== undefined ? { factExtractionModel: validatedFactModel } : {}),
+    });
     const settings = await getUserSettings(req.session!.userId!);
     const { monthlyBudgetCents, budgetWarnedPeriod: _budgetWarnedPeriod, ...rest } = settings;
     res.json({
@@ -44,6 +72,10 @@ settingsRouter.put('/', requireAuth, mutationLimiter, async (req, res, next) => 
       monthlyBudgetUsd: monthlyBudgetCents != null ? monthlyBudgetCents / 100 : null,
     });
   } catch (err) {
+    if (err instanceof Error && 'status' in err && (err as Error & { status: number }).status === 400) {
+      res.status(400).json({ error: { code: 'INVALID_INPUT', message: err.message } });
+      return;
+    }
     next(err);
   }
 });
@@ -116,6 +148,50 @@ settingsRouter.delete('/credentials/:provider', requireAuth, mutationLimiter, as
 
     const creds = await listCredentials(req.session!.userId!);
     res.json({ ok: true, credentials: creds });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /settings/tokens — list active personal access tokens (no hashes)
+settingsRouter.get('/tokens', requireAuth, async (req, res, next) => {
+  try {
+    const tokens = await listTokens(req.session!.userId!);
+    res.json(tokens);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /settings/tokens — create a new personal access token (raw shown once)
+settingsRouter.post('/tokens', requireAuth, mutationLimiter, async (req, res, next) => {
+  try {
+    const { name } = req.body as { name?: unknown };
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'name is required' } });
+      return;
+    }
+    if (name.trim().length > 100) {
+      res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'name must be 100 characters or fewer' } });
+      return;
+    }
+    const { id, rawToken, createdAt } = await issueToken(req.session!.userId!, name.trim());
+    res.json({ id, name: name.trim(), rawToken, createdAt });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /settings/tokens/:id — revoke a personal access token
+settingsRouter.delete('/tokens/:id', requireAuth, mutationLimiter, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const revoked = await revokeToken(req.session!.userId!, id);
+    if (!revoked) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Token not found or already revoked' } });
+      return;
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -6,9 +6,9 @@
  * none of which are compatible with Sage's single-database, connection-URL
  * setup.  We therefore own the SQL layer directly (using the same schema from
  * migration 024_mem0_schema.sql) and expose the clean interface the rest of
- * Sage depends on.  mem0ai remains installed for its LLM-extraction utilities
- * (Phase 4 will wire in resolveRoleModel + use Memory.add for intelligent
- * deduplication).
+ * Sage depends on.  mem0ai remains installed for its LLM-extraction utilities.
+ * TODO(Phase 8): use resolveRoleModel(userId, 'fact_extraction') for embedding
+ * model when vector search wires in. Phase 3 uses Postgres FTS; no LLM call here.
  */
 
 import { randomUUID } from 'node:crypto';

@@ -13,18 +13,35 @@ interface CredentialInfo {
   updatedAt: string | null;
 }
 
+export interface RoleModel {
+  provider: string;
+  model: string;
+}
+
 interface SettingsState {
   provider: string | null;
   model: string | null;
   availableProviders: ProviderInfo[];
   credentials: Record<string, CredentialInfo>;
   isLoading: boolean;
-  pendingChanges: { provider?: string; model?: string } | null;
+  pendingChanges: {
+    provider?: string;
+    model?: string;
+    chatModel?: RoleModel | null;
+    wikiMaintenanceModel?: RoleModel | null;
+    factExtractionModel?: RoleModel | null;
+  } | null;
   monthlyBudgetUsd: number | null;
+  chatModel: RoleModel | null;
+  wikiMaintenanceModel: RoleModel | null;
+  factExtractionModel: RoleModel | null;
   loadSettings: () => Promise<void>;
   loadProviders: () => Promise<void>;
   updateProvider: (provider: string) => void;
   updateModel: (model: string) => void;
+  setChatModel: (value: RoleModel | null) => void;
+  setWikiMaintenanceModel: (value: RoleModel | null) => void;
+  setFactExtractionModel: (value: RoleModel | null) => void;
   flushPending: () => Promise<void>;
   saveCredential: (provider: string, apiKey: string) => Promise<void>;
   deleteCredential: (provider: string) => Promise<void>;
@@ -51,6 +68,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoading: true,
   pendingChanges: null,
   monthlyBudgetUsd: null,
+  chatModel: null,
+  wikiMaintenanceModel: null,
+  factExtractionModel: null,
 
   async loadSettings() {
     set({ isLoading: true });
@@ -62,12 +82,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         activeModel: string;
         credentials?: Record<string, CredentialInfo>;
         monthlyBudgetUsd?: number | null;
+        chatModel?: RoleModel | null;
+        wikiMaintenanceModel?: RoleModel | null;
+        factExtractionModel?: RoleModel | null;
       };
       set({
         provider: data.activeProvider,
         model: data.activeModel,
         credentials: data.credentials ?? {},
         monthlyBudgetUsd: data.monthlyBudgetUsd ?? null,
+        chatModel: data.chatModel ?? null,
+        wikiMaintenanceModel: data.wikiMaintenanceModel ?? null,
+        factExtractionModel: data.factExtractionModel ?? null,
         isLoading: false,
       });
     } catch {
@@ -104,17 +130,39 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     debouncedFlush();
   },
 
+  setChatModel(value) {
+    const { pendingChanges } = get();
+    set({ pendingChanges: { ...pendingChanges, chatModel: value }, chatModel: value });
+    debouncedFlush();
+  },
+
+  setWikiMaintenanceModel(value) {
+    const { pendingChanges } = get();
+    set({ pendingChanges: { ...pendingChanges, wikiMaintenanceModel: value }, wikiMaintenanceModel: value });
+    debouncedFlush();
+  },
+
+  setFactExtractionModel(value) {
+    const { pendingChanges } = get();
+    set({ pendingChanges: { ...pendingChanges, factExtractionModel: value }, factExtractionModel: value });
+    debouncedFlush();
+  },
+
   async flushPending() {
     const stateBefore = useSettingsStore.getState();
     const { pendingChanges } = stateBefore;
     if (!pendingChanges) return;
+    const body: Record<string, unknown> = {
+      activeProvider: pendingChanges.provider ?? stateBefore.provider,
+      activeModel: pendingChanges.model ?? stateBefore.model,
+    };
+    if ('chatModel' in pendingChanges) body.chatModel = pendingChanges.chatModel;
+    if ('wikiMaintenanceModel' in pendingChanges) body.wikiMaintenanceModel = pendingChanges.wikiMaintenanceModel;
+    if ('factExtractionModel' in pendingChanges) body.factExtractionModel = pendingChanges.factExtractionModel;
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        activeProvider: pendingChanges.provider ?? stateBefore.provider,
-        activeModel: pendingChanges.model ?? stateBefore.model,
-      }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       set({ pendingChanges: null });

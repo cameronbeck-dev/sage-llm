@@ -1,14 +1,14 @@
 import { getPool } from '../../db/pool.js';
 import { getObjectStore } from '../../storage/index.js';
 import { getProvider } from '../../providers/registry.js';
-import { getUserSettings } from '../settings.js';
-import { getDecryptedCredential, CredentialNotFoundError } from '../credentials.js';
 import { listMessages } from '../messages.js';
 import { ensureBootstrap } from './bootstrap.js';
 import { SCHEMA_KEY, INDEX_KEY } from './layout.js';
 import { writePage, readPage, deletePage } from './store.js';
 import { buildIngestPrompt } from '../../prompts/wiki/ingest.js';
 import { buildQueryPrompt } from '../../prompts/wiki/query.js';
+import { resolveRoleModel } from '../settings/roleModel.js';
+import { MissingCredentialsForRoleError } from '../settings/errors.js';
 import { logger } from '../../logger.js';
 
 const MAX_OPS_PER_TURN = 10;
@@ -22,20 +22,8 @@ function extractText(content: { type: string; text?: string }[]): string {
 }
 
 async function callModel(userId: string, system: string, userText: string): Promise<string> {
-  // TODO(Phase 4): use resolveRoleModel(userId, 'wiki_maintenance') once available
-  const settings = await getUserSettings(userId);
-  let apiKey: string;
-  try {
-    apiKey = await getDecryptedCredential(userId, settings.activeProvider);
-  } catch (err) {
-    if (err instanceof CredentialNotFoundError) {
-      throw new Error(`[wiki/maintainer] no API key for ${settings.activeProvider}`);
-    }
-    throw err;
-  }
-
-  const provider = getProvider(settings.activeProvider);
-  const model = settings.activeModel;
+  const { provider: providerId, model, apiKey } = await resolveRoleModel(userId, 'wiki_maintenance');
+  const provider = getProvider(providerId);
   const creds = { apiKey };
 
   let output = '';
@@ -221,18 +209,25 @@ export async function queryForContext(opts: {
 
     const prompt = buildQueryPrompt({ index: indexContent.slice(0, 3000), recentUserMessage });
 
-    // TODO(Phase 4): use resolveRoleModel(userId, 'wiki_maintenance') once available
-    const settings = await getUserSettings(userId);
-    let apiKey: string;
+    let resolvedProvider: string;
+    let resolvedModel: string;
+    let resolvedApiKey: string;
     try {
-      apiKey = await getDecryptedCredential(userId, settings.activeProvider);
-    } catch {
-      return '';
+      const resolved = await resolveRoleModel(userId, 'wiki_maintenance');
+      resolvedProvider = resolved.provider;
+      resolvedModel = resolved.model;
+      resolvedApiKey = resolved.apiKey;
+    } catch (err) {
+      if (err instanceof MissingCredentialsForRoleError) {
+        logger.warn({ err }, '[wiki/maintainer] queryForContext: missing credentials for wiki_maintenance role');
+        return '';
+      }
+      throw err;
     }
 
-    const provider = getProvider(settings.activeProvider);
-    const model = settings.activeModel;
-    const creds = { apiKey };
+    const provider = getProvider(resolvedProvider);
+    const model = resolvedModel;
+    const creds = { apiKey: resolvedApiKey };
 
     let raw = '';
     for await (const chunk of provider.chatStream(

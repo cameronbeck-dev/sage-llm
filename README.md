@@ -191,10 +191,13 @@ All routes require authentication unless noted.
 | `GET` | `/api/providers` | List all providers with models and key status |
 | `POST` | `/api/providers/:provider/models` | List models for a specific provider |
 | `GET` | `/api/settings` | Get user settings + credential status |
-| `PUT` | `/api/settings` | Update active provider/model/theme |
+| `PUT` | `/api/settings` | Update active provider/model/theme/role models |
 | `PUT` | `/api/settings/credentials/:provider` | Store/encrypt an API key |
 | `GET` | `/api/settings/credentials/:provider` | Check if key is stored |
 | `DELETE` | `/api/settings/credentials/:provider` | Remove stored key |
+| `GET` | `/api/settings/tokens` | List active personal access tokens |
+| `POST` | `/api/settings/tokens` | Create a personal access token (raw shown once) |
+| `DELETE` | `/api/settings/tokens/:id` | Revoke a personal access token |
 | `GET` | `/api/docs/:filename` | Get a memory doc (AGENTS.md, MEMORY.md, SUMMARIES.json) |
 | `PUT` | `/api/docs/AGENTS.md` | Update agent instructions (user-editable) |
 | `GET` | `/api/usage` | Get usage report for the current or specified period |
@@ -427,6 +430,38 @@ DATABASE_URL=postgresql://localhost:5432/sage_wiki PORT=3002 SAGE_WIKI_ENABLED=t
 ```
 
 Each instance needs its own `DATABASE_URL` so migrations don't collide. Both can share the same GitHub OAuth app as long as `OAUTH_REDIRECT_URI` matches the port you're testing. Set `SAGE_WIKI_ENABLED=true` only on the wiki-migration instance.
+
+### Phase 4: Per-role models + personal access tokens
+
+Per-role model assignments are now available in **Settings → Model assignments**. Each role (chat, wiki maintenance, fact extraction) defaults to your primary model but can be overridden to any provider/model independently. The resolver falls through: call-time override → conversation preferred model → role assignment → primary.
+
+Personal access tokens (PATs) are available in **Settings → Personal access tokens**. See below for usage.
+
+---
+
+## Personal access tokens
+
+Long-lived bearer tokens for using Sage from a CLI, mobile app, or always-on agent (no browser session required).
+
+**Creating a token**
+
+Go to **Settings → Personal access tokens**, enter a name, and click **Create token**. The raw token is shown once — copy it and store it securely.
+
+**Token format:** `sage_pat_<random>` — tokens are ~52 characters and stored as SHA-256 hashes; the raw value is never stored.
+
+**Using a token**
+
+Pass the token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer sage_pat_..." https://your-sage/api/wiki/pages
+```
+
+Bearer auth works on any route that requires auth (`requireAuth` middleware). Cookie session still works normally for browser clients — the two paths coexist.
+
+**Revoking a token**
+
+Click **Revoke** next to the token in Settings, or call `DELETE /api/settings/tokens/:id`. Revocation is immediate and irreversible.
 
 ---
 

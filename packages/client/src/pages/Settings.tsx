@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../state/settingsStore.js';
+import type { RoleModel } from '../state/settingsStore.js';
 import { triggerToast } from '../components/ui/ToastContainer.js';
 import ProviderModelSelect from '../components/chat/ProviderModelSelect.js';
 import ConfirmModal from '../components/ui/ConfirmModal.js';
@@ -352,6 +353,308 @@ function BudgetSection({ monthlyBudgetUsd, onSave }: { monthlyBudgetUsd: number 
   );
 }
 
+interface ModelAssignmentsSectionProps {
+  availableProviders: { id: string; displayName: string; models: { id: string; displayName: string }[] }[];
+  isLoading: boolean;
+  primaryProvider: string | null;
+  primaryModel: string | null;
+  chatModel: RoleModel | null;
+  wikiMaintenanceModel: RoleModel | null;
+  factExtractionModel: RoleModel | null;
+  setChatModel: (v: RoleModel | null) => void;
+  setWikiMaintenanceModel: (v: RoleModel | null) => void;
+  setFactExtractionModel: (v: RoleModel | null) => void;
+}
+
+function RoleModelRow({
+  label,
+  value,
+  primaryProvider,
+  primaryModel,
+  availableProviders,
+  isLoading,
+  onChange,
+}: {
+  label: string;
+  value: RoleModel | null;
+  primaryProvider: string | null;
+  primaryModel: string | null;
+  availableProviders: { id: string; displayName: string; models: { id: string; displayName: string }[] }[];
+  isLoading: boolean;
+  onChange: (v: RoleModel | null) => void;
+}) {
+  const usePrimary = value === null;
+
+  function handleCheckboxChange(checked: boolean) {
+    if (checked) {
+      onChange(null);
+    } else {
+      onChange({ provider: primaryProvider ?? 'openai', model: primaryModel ?? '' });
+    }
+  }
+
+  function handleProviderChange(p: string) {
+    const info = availableProviders.find(ap => ap.id === p);
+    const firstModel = info?.models[0]?.id ?? '';
+    onChange({ provider: p, model: firstModel });
+  }
+
+  function handleModelChange(m: string) {
+    onChange({ provider: value?.provider ?? primaryProvider ?? 'openai', model: m });
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={usePrimary}
+          onChange={e => handleCheckboxChange(e.target.checked)}
+        />
+        <span className="settings-label" style={{ margin: 0 }}>Use primary model for {label}</span>
+      </label>
+      {!usePrimary && (
+        <div style={{ marginLeft: 24 }}>
+          <ProviderModelSelect
+            provider={value?.provider ?? null}
+            model={value?.model ?? null}
+            availableProviders={availableProviders}
+            isLoading={isLoading}
+            onProviderChange={handleProviderChange}
+            onModelChange={handleModelChange}
+            layout="stacked"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModelAssignmentsSection({
+  availableProviders,
+  isLoading,
+  primaryProvider,
+  primaryModel,
+  chatModel,
+  wikiMaintenanceModel,
+  factExtractionModel,
+  setChatModel,
+  setWikiMaintenanceModel,
+  setFactExtractionModel,
+}: ModelAssignmentsSectionProps) {
+  function handleChange(setter: (v: RoleModel | null) => void) {
+    return (v: RoleModel | null) => {
+      setter(v);
+      triggerToast('Settings saved.', 'success');
+    };
+  }
+
+  return (
+    <section className="settings-section pixel-border">
+      <h2 className="settings-section__title">Model assignments</h2>
+      <p className="settings-info">
+        Use your primary model for everything, or assign a different model to specific roles.
+      </p>
+      <RoleModelRow
+        label="chat"
+        value={chatModel}
+        primaryProvider={primaryProvider}
+        primaryModel={primaryModel}
+        availableProviders={availableProviders}
+        isLoading={isLoading}
+        onChange={handleChange(setChatModel)}
+      />
+      <RoleModelRow
+        label="wiki maintenance"
+        value={wikiMaintenanceModel}
+        primaryProvider={primaryProvider}
+        primaryModel={primaryModel}
+        availableProviders={availableProviders}
+        isLoading={isLoading}
+        onChange={handleChange(setWikiMaintenanceModel)}
+      />
+      <RoleModelRow
+        label="fact extraction"
+        value={factExtractionModel}
+        primaryProvider={primaryProvider}
+        primaryModel={primaryModel}
+        availableProviders={availableProviders}
+        isLoading={isLoading}
+        onChange={handleChange(setFactExtractionModel)}
+      />
+    </section>
+  );
+}
+
+interface TokenRecord {
+  id: string;
+  name: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+function formatRelative(dateStr: string | null): string {
+  if (!dateStr) return 'never';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}yr ago`;
+}
+
+function PersonalAccessTokensSection() {
+  const [tokens, setTokens] = useState<TokenRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newToken, setNewToken] = useState<{ id: string; rawToken: string } | null>(null);
+  const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
+
+  async function loadTokens() {
+    try {
+      const res = await fetch('/api/settings/tokens');
+      if (!res.ok) return;
+      setTokens((await res.json()) as TokenRecord[]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadTokens(); }, []);
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/settings/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: { message?: string } };
+        triggerToast(err.error?.message ?? 'Failed to create token', 'error');
+        return;
+      }
+      const data = (await res.json()) as TokenRecord & { rawToken: string };
+      setNewToken({ id: data.id, rawToken: data.rawToken });
+      setNewName('');
+      await loadTokens();
+      triggerToast('Token created.', 'success');
+    } catch (err) {
+      triggerToast((err as Error).message, 'error');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    try {
+      const res = await fetch(`/api/settings/tokens/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        triggerToast('Failed to revoke token', 'error');
+        return;
+      }
+      setTokens(prev => prev.filter(t => t.id !== id));
+      if (newToken?.id === id) setNewToken(null);
+      triggerToast('Token revoked.', 'success');
+    } catch (err) {
+      triggerToast((err as Error).message, 'error');
+    } finally {
+      setRevokeConfirmId(null);
+    }
+  }
+
+  function handleCopy(text: string) {
+    void navigator.clipboard.writeText(text).then(() => triggerToast('Copied.', 'success'));
+  }
+
+  return (
+    <section className="settings-section pixel-border">
+      <h2 className="settings-section__title">Personal access tokens</h2>
+      <p className="settings-info">
+        Long-lived tokens for using Sage from a CLI, mobile app, or always-on agent. Tokens are shown once at creation.
+      </p>
+
+      {loading ? (
+        <p className="settings-info">Loading...</p>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          {tokens.length === 0 && <p className="settings-info u-muted">No active tokens.</p>}
+          {tokens.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</span>
+                <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 8 }}>
+                  created {formatRelative(t.createdAt)} · last used {formatRelative(t.lastUsedAt)}
+                </span>
+              </div>
+              <button
+                className="api-key-btn api-key-btn--delete"
+                onClick={() => setRevokeConfirmId(t.id)}
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {newToken && (
+        <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,200,0,0.07)', borderRadius: 4, border: '1px solid rgba(255,200,0,0.2)' }}>
+          <p style={{ fontSize: 12, marginBottom: 8, color: 'var(--color-warn, #f0b429)' }}>
+            This is the only time you will see this token. Store it securely.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              readOnly
+              value={newToken.rawToken}
+              className="api-key-input"
+              style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }}
+            />
+            <button className="btn btn--sm" onClick={() => handleCopy(newToken.rawToken)}>Copy</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <label className="settings-label" htmlFor="pat-name">Token name</label>
+          <input
+            id="pat-name"
+            className="api-key-input"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="e.g. My CLI"
+            maxLength={100}
+            onKeyDown={e => { if (e.key === 'Enter') void handleCreate(); }}
+          />
+        </div>
+        <button
+          className="btn btn--primary"
+          onClick={() => void handleCreate()}
+          disabled={creating || !newName.trim()}
+        >
+          {creating ? 'Creating...' : 'Create token'}
+        </button>
+      </div>
+
+      <ConfirmModal
+        isOpen={revokeConfirmId !== null}
+        title="Revoke token"
+        message="This token will stop working immediately. This cannot be undone."
+        confirmLabel="Revoke"
+        danger
+        onConfirm={() => { if (revokeConfirmId) void handleRevoke(revokeConfirmId); }}
+        onCancel={() => setRevokeConfirmId(null)}
+      />
+    </section>
+  );
+}
+
 export default function Settings() {
   const {
     provider,
@@ -367,6 +670,12 @@ export default function Settings() {
     deleteCredential,
     monthlyBudgetUsd,
     saveBudget,
+    chatModel,
+    wikiMaintenanceModel,
+    factExtractionModel,
+    setChatModel,
+    setWikiMaintenanceModel,
+    setFactExtractionModel,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -462,6 +771,19 @@ export default function Settings() {
         />
       </section>
 
+      <ModelAssignmentsSection
+        availableProviders={availableProviders}
+        isLoading={isLoading}
+        primaryProvider={provider}
+        primaryModel={model}
+        chatModel={chatModel}
+        wikiMaintenanceModel={wikiMaintenanceModel}
+        factExtractionModel={factExtractionModel}
+        setChatModel={setChatModel}
+        setWikiMaintenanceModel={setWikiMaintenanceModel}
+        setFactExtractionModel={setFactExtractionModel}
+      />
+
       <section className="settings-section pixel-border">
         <h2 className="settings-section__title">API Keys</h2>
         <p className="settings-info">
@@ -485,6 +807,8 @@ export default function Settings() {
           })}
         </div>
       </section>
+
+      <PersonalAccessTokensSection />
 
       <CollapsibleSection title="Agent Instructions (AGENTS.md)">
         <AgentInstructionsContent />
