@@ -57,10 +57,27 @@ ${lastAssistantText}
 LAST USER:
 ${lastUserText}
 
+Rules for extractedText:
+- Write in third-person present tense.
+- The goal is fidelity: a future conversation should be able to pick up this topic
+  without re-asking. Prefer a clause-rich sentence or two over a one-liner.
+- Preserve: mechanisms (how something works), cadence (how often / when), relationships
+  (what depends on what), motivations / the "why", named entities and identifiers,
+  qualifiers and constraints. Do not strip these as "fluff."
+- Bad: "Barry is an OpenClaw agent that runs tasks on a schedule."
+- Good: "Barry is an OpenClaw agent that queries Teelo's database on a schedule,
+  surfaces interesting matches via a learned flagging system, generates ~3 post ideas
+  per day, sends them to the user via Discord for approval, and incorporates the user's
+  replies as feedback so the sense of 'interesting' improves over time."
+- There is no length cap on extractedText. Write as much as needed so the entry
+  stands alone.
+
 Rules for displaySummary:
 - ≤80 chars, third-person present tense.
-- No meta-commentary ("Saved the user's preference about X") — just the compressed fact ("Prefers tabs over spaces", "Teelo uses Postgres partitioned by month").
+- This is a UI label only — a short title for the save notification. Brevity is correct here.
+- No meta-commentary ("Saved the user's preference about X") — just the compressed label ("Prefers tabs over spaces", "Barry: OpenClaw agent with Discord approval loop").
 - The UI prefixes it with the destination kind, so do NOT include a prefix like "Saved to memory:" or "Added to Teelo:".
+- The verbosity guidance above applies to extractedText, not displaySummary.
 
 Output ONLY valid JSON matching this exact shape:
 {
@@ -72,7 +89,7 @@ Output ONLY valid JSON matching this exact shape:
       "kind": "memory" | "existing_pack" | "orphan",
       "packId": "string (required when kind === 'existing_pack')",
       "suggestedTopic": "string (required when kind === 'orphan')",
-      "extractedText": "string — the fact, phrased as a third-person statement about the user",
+      "extractedText": "string — the fact in full fidelity, third-person, as many clauses as needed",
       "displaySummary": "string — ≤80 chars, third-person present, no prefix, suitable for UI confirmation"
     }
   ]
