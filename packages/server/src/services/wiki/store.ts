@@ -410,6 +410,62 @@ export async function getLinks(opts: {
   }));
 }
 
+export async function readVersion(
+  userId: string,
+  pageId: string,
+  versionId: string
+): Promise<{ body: string; contentHash: string; author: string; reason: string | null; createdAt: Date } | null> {
+  const pool = getPool();
+  const { rows } = await pool.query<{
+    id: string; content_hash: string; r2_key: string; author: string; reason: string | null; created_at: Date;
+  }>(
+    `SELECT wpv.id, wpv.content_hash, wpv.r2_key, wpv.author, wpv.reason, wpv.created_at
+     FROM wiki_page_versions wpv
+     JOIN wiki_pages wp ON wp.id = wpv.page_id
+     WHERE wpv.id = $1 AND wpv.page_id = $2 AND wp.user_id = $3`,
+    [versionId, pageId, userId]
+  );
+  if (rows.length === 0) return null;
+
+  const row = rows[0];
+  const store = getObjectStore();
+  const buffer = await store.get(row.r2_key);
+  const body = buffer.toString('utf-8');
+
+  return {
+    body,
+    contentHash: row.content_hash,
+    author: row.author,
+    reason: row.reason,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listVersions(
+  userId: string,
+  path: string
+): Promise<Array<{ id: string; contentHash: string; author: string; reason: string | null; createdAt: Date }>> {
+  const pool = getPool();
+  const { rows } = await pool.query<{
+    id: string; content_hash: string; author: string; reason: string | null; created_at: Date;
+  }>(
+    `SELECT wpv.id, wpv.content_hash, wpv.author, wpv.reason, wpv.created_at
+     FROM wiki_page_versions wpv
+     JOIN wiki_pages wp ON wp.id = wpv.page_id
+     WHERE wp.user_id = $1 AND wp.path = $2 AND wp.deleted_at IS NULL
+     ORDER BY wpv.created_at DESC
+     LIMIT 50`,
+    [userId, path]
+  );
+  return rows.map(r => ({
+    id: r.id,
+    contentHash: r.content_hash,
+    author: r.author,
+    reason: r.reason,
+    createdAt: r.created_at,
+  }));
+}
+
 export async function autocompletePaths(
   userId: string,
   q: string,

@@ -120,6 +120,42 @@ export default function Chat() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!activeConversationId) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/whispers/stream?conversationId=${activeConversationId}`, {
+          signal: controller.signal,
+          credentials: 'include',
+        });
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              JSON.parse(line.slice(6));
+              await setActive(activeConversationId);
+            } catch { /* ignore malformed events */ }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('[chat] whisper stream error:', err);
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [activeConversationId, setActive]);
+
+  useEffect(() => {
     if (textareaRef.current) resizeTextarea(textareaRef.current);
   }, [inputText]);
 

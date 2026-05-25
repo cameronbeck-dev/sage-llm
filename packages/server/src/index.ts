@@ -23,6 +23,8 @@ import { KNOWLEDGE_PARSE_JOB } from './jobs/handlers/knowledge-parse.js';
 import { WIKI_MIGRATE } from './jobs/handlers/wiki-migrate.js';
 import { WIKI_CURATE_PAGE } from './jobs/handlers/wiki-curate-page.js';
 import { WIKI_INGEST_TURN } from './jobs/handlers/wiki-ingest-turn.js';
+import { setupSubscribers } from './services/whisper-feed.js';
+import { isWikiEnabled } from './config/flags.js';
 
 initSentry();
 
@@ -75,6 +77,10 @@ async function main() {
     await boss.createQueue(WIKI_INGEST_TURN);
   } catch (err) {
     logger.error({ err }, '[startup] failed to ensure import queues exist');
+  }
+
+  if (isWikiEnabled()) {
+    setupSubscribers();
   }
 
   app.listen(config.PORT, () => {

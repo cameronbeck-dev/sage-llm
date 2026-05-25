@@ -65,8 +65,17 @@ interface IngestPlanRaw {
   facts: Array<{ text: string; metadata?: Record<string, unknown> }>;
 }
 
+export interface AppliedOp {
+  op: 'create' | 'update' | 'delete' | 'link';
+  path: string;
+  pageId?: string;
+  versionId?: string;
+  title?: string;
+}
+
 export interface IngestResult {
   appliedOps: number;
+  appliedOpList: AppliedOp[];
   deferredOps: number;
   facts: Array<{ text: string; metadata?: Record<string, unknown> }>;
 }
@@ -85,13 +94,13 @@ export async function ingestTurn(opts: {
 
   if (!userMsg || !assistantMsg) {
     logger.warn({ userMessageId, assistantMessageId }, '[wiki/maintainer] messages not found');
-    return { appliedOps: 0, deferredOps: 0, facts: [] };
+    return { appliedOps: 0, appliedOpList: [], deferredOps: 0, facts: [] };
   }
 
   const userText = extractText(userMsg.content as { type: string; text?: string }[]);
   const assistantText = extractText(assistantMsg.content as { type: string; text?: string }[]);
 
-  if (!userText) return { appliedOps: 0, deferredOps: 0, facts: [] };
+  if (!userText) return { appliedOps: 0, appliedOpList: [], deferredOps: 0, facts: [] };
 
   await ensureBootstrap(userId);
 
@@ -124,13 +133,13 @@ export async function ingestTurn(opts: {
     raw = await callModel(userId, system, user);
   } catch (err) {
     logger.error({ err }, '[wiki/maintainer] ingestTurn model call failed');
-    return { appliedOps: 0, deferredOps: 0, facts: [] };
+    return { appliedOps: 0, appliedOpList: [], deferredOps: 0, facts: [] };
   }
 
   const plan = extractJson<IngestPlanRaw>(raw);
   if (!plan) {
     logger.warn({ raw: raw.slice(0, 500) }, '[wiki/maintainer] failed to parse ingest plan');
-    return { appliedOps: 0, deferredOps: 0, facts: [] };
+    return { appliedOps: 0, appliedOpList: [], deferredOps: 0, facts: [] };
   }
 
   const ops = Array.isArray(plan.wikiOps) ? plan.wikiOps : [];
@@ -144,9 +153,9 @@ export async function ingestTurn(opts: {
     for (const op of toDefer) {
       try {
         await pool.query(
-          `INSERT INTO wiki_deferred_ops (turn_id, op_json, status)
-           VALUES ($1, $2, 'pending')`,
-          [assistantMessageId, JSON.stringify(op)]
+          `INSERT INTO wiki_deferred_ops (user_id, turn_id, op_json, status)
+           VALUES ($1, $2, $3, 'pending')`,
+          [userId, assistantMessageId, JSON.stringify(op)]
         );
       } catch (err) {
         logger.error({ err, op }, '[wiki/maintainer] failed to insert deferred op');
@@ -156,20 +165,31 @@ export async function ingestTurn(opts: {
   }
 
   let appliedOps = 0;
+  const appliedOpList: AppliedOp[] = [];
   for (const op of toApply) {
     try {
       if (op.op === 'create' || op.op === 'update') {
-        await writePage({ userId, path: op.path, body: op.body, author: 'llm', reason: op.reason });
-        appliedOps++;
+        const result = await writePage({ userId, path: op.path, body: op.body, author: 'llm', reason: op.reason });
+        if (!result.noop) {
+          appliedOps++;
+          appliedOpList.push({
+            op: op.op,
+            path: op.path,
+            pageId: result.pageId,
+            versionId: result.versionId ?? undefined,
+            title: op.op === 'create' ? (op as { op: 'create'; path: string; title: string; type: string; body: string; reason?: string }).title : undefined,
+          });
+        }
       } else if (op.op === 'delete') {
         await deletePage(userId, op.path);
         appliedOps++;
+        appliedOpList.push({ op: 'delete', path: op.path });
       } else if (op.op === 'link') {
         const page = await readPage(userId, op.sourcePath);
         if (page) {
           const linkRef = `[[${op.targetPath}]]`;
           if (!page.body.includes(linkRef)) {
-            await writePage({
+            const result = await writePage({
               userId,
               path: op.sourcePath,
               body: page.body.trimEnd() + `\n${linkRef}\n`,
@@ -177,6 +197,12 @@ export async function ingestTurn(opts: {
               reason: op.reason,
             });
             appliedOps++;
+            appliedOpList.push({
+              op: 'link',
+              path: op.sourcePath,
+              pageId: result.pageId,
+              versionId: result.versionId ?? undefined,
+            });
           }
         }
       }
@@ -185,7 +211,7 @@ export async function ingestTurn(opts: {
     }
   }
 
-  return { appliedOps, deferredOps: toDefer.length, facts };
+  return { appliedOps, appliedOpList, deferredOps: toDefer.length, facts };
 }
 
 export async function queryForContext(opts: {

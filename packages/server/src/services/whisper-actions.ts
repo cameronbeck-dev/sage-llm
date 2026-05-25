@@ -2,6 +2,8 @@ import { getPool } from '../db/pool.js';
 import { createPack, attachPackToConversation } from './_legacy/knowledge.js';
 import { insertPackChunk } from './_legacy/extraction.js';
 import { getOrphansByIds } from './_legacy/orphans.js';
+import { readPage, readVersion, writePage } from './wiki/store.js';
+import { getFact, deleteFact } from './facts/mem0Client.js';
 import type { Message, WhisperAction } from '@sage/shared';
 import { rowToMessage } from './messages.js';
 
@@ -123,6 +125,45 @@ export async function handleWhisperAction(
 
       case 'view_entry': {
         // Handled client-side; no server state change needed
+        break;
+      }
+
+      case 'undo_wiki_edit': {
+        const pageResult = await readPage(userId, action.path);
+        if (!pageResult) {
+          const err = new Error('Wiki page not found') as Error & { status?: number };
+          err.status = 404;
+          throw err;
+        }
+        const version = await readVersion(userId, pageResult.pageId, action.versionId);
+        if (!version) {
+          const err = new Error('Wiki version not found') as Error & { status?: number };
+          err.status = 404;
+          throw err;
+        }
+        await writePage({ userId, path: action.path, body: version.body, author: 'user', reason: 'undo' });
+        break;
+      }
+
+      case 'undo_fact': {
+        const fact = await getFact(action.factId);
+        if (!fact || fact.userId !== userId) {
+          const err = new Error('Fact not found') as Error & { status?: number };
+          err.status = 404;
+          throw err;
+        }
+        await deleteFact(action.factId);
+        break;
+      }
+
+      case 'wiki_page_created':
+      case 'wiki_page_updated':
+      case 'wiki_page_deleted':
+      case 'wiki_link_added':
+      case 'view_wiki_page':
+      case 'view_fact':
+      case 'review_deferred_ops': {
+        // No-op server-side; intercepted client-side or marked consumed only
         break;
       }
 

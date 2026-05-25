@@ -9,4 +9,12 @@ export type SSEChunk =
   | { type: 'extraction_progress'; stage: 'started' | 'destinations_known' | 'destination_complete' | 'finished'; label?: string; indicators?: Array<{ id: string; label: string }>; completedId?: string }
   | { type: 'tool_call_started'; id: string; name: string; input: unknown }
   | { type: 'tool_call_result'; id: string; name: string; result: unknown }
-  | { type: 'tool_call_error'; id: string; name: string; error: string };
+  | { type: 'tool_call_error'; id: string; name: string; error: string }
+  | {
+      type: 'wiki_progress';
+      stage: 'started' | 'op_applied' | 'finished';
+      path?: string;
+      op?: 'create' | 'update' | 'delete' | 'link';
+      appliedOps?: number;
+      deferredOps?: number;
+    };
