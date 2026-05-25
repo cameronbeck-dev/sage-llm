@@ -99,6 +99,12 @@ export function extractWikilinks(body: string): string[] {
   return Array.from(seen);
 }
 
+export function replaceWikilinks(body: string, oldPath: string, newPath: string): string {
+  const escaped = oldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\[\\[${escaped}(\\|[^\\]]+)?\\]\\]`, 'g');
+  return body.replace(pattern, (_match, displayPart) => `[[${newPath}${displayPart ?? ''}]]`);
+}
+
 export function extractProvenance(body: string): string[] {
   const seen = new Set<string>();
   const re = /\^\[(raw\/[^\]]+)\]/g;

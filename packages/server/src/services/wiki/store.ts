@@ -2,8 +2,22 @@ import { createHash, randomUUID } from 'node:crypto';
 import { getPool } from '../../db/pool.js';
 import { getObjectStore } from '../../storage/index.js';
 import { pageKey, versionKey } from './layout.js';
-import { parseFrontmatter, extractWikilinks, extractProvenance } from './markdown.js';
+import { parseFrontmatter, extractWikilinks, extractProvenance, replaceWikilinks } from './markdown.js';
 import { emit } from './events.js';
+
+export class ContentHashMismatchError extends Error {
+  constructor(public storedHash: string, public storedBody: string, public requestedHash: string) {
+    super('Content hash mismatch — page has changed since you read it');
+    this.name = 'ContentHashMismatchError';
+  }
+}
+
+export class RenameInProgressError extends Error {
+  constructor(public path: string) {
+    super(`Rename already in progress for ${path}`);
+    this.name = 'RenameInProgressError';
+  }
+}
 
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf-8').digest('hex');
@@ -110,12 +124,14 @@ export async function writePage({
   body,
   author,
   reason,
+  expectedContentHash,
 }: {
   userId: string;
   path: string;
   body: string;
   author: 'llm' | 'user' | 'migration';
   reason?: string;
+  expectedContentHash?: string;
 }): Promise<WritePageResult> {
   const pool = getPool();
   const store = getObjectStore();
@@ -137,6 +153,17 @@ export async function writePage({
 
   const isNew = existing.length === 0 || existing[0].deleted_at !== null;
   const existingRow = existing.length > 0 ? existing[0] : null;
+
+  if (expectedContentHash !== undefined) {
+    if (!existingRow || existingRow.deleted_at !== null) {
+      throw new ContentHashMismatchError('', '', expectedContentHash);
+    }
+    if (existingRow.content_hash !== expectedContentHash) {
+      const storedBuf = await store.get(existingRow.r2_key);
+      const storedBody = storedBuf.toString('utf-8');
+      throw new ContentHashMismatchError(existingRow.content_hash, storedBody, expectedContentHash);
+    }
+  }
 
   if (existingRow && existingRow.deleted_at === null && existingRow.content_hash === contentHash) {
     const { rows: vrows } = await pool.query<{ id: string }>(
@@ -334,16 +361,21 @@ export async function listPages(
 
 export async function getLog(
   userId: string,
-  opts: { limit?: number; before?: string } = {}
+  opts: { limit?: number; before?: string; pageId?: string } = {}
 ): Promise<WikiLogEntry[]> {
   const pool = getPool();
-  const { limit = 50, before } = opts;
+  const { limit = 50, before, pageId } = opts;
   const params: unknown[] = [userId];
   const conditions: string[] = ['user_id = $1'];
 
   if (before) {
     params.push(before);
     conditions.push(`id < $${params.length}`);
+  }
+
+  if (pageId) {
+    params.push(pageId);
+    conditions.push(`page_id = $${params.length}`);
   }
 
   params.push(limit);
@@ -464,6 +496,104 @@ export async function listVersions(
     reason: r.reason,
     createdAt: r.created_at,
   }));
+}
+
+export async function getPageIdByPath(userId: string, path: string): Promise<string | null> {
+  const pool = getPool();
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT id FROM wiki_pages WHERE user_id = $1 AND path = $2 AND deleted_at IS NULL`,
+    [userId, path]
+  );
+  return rows.length > 0 ? rows[0].id : null;
+}
+
+export async function renamePage(userId: string, oldPath: string, newPath: string): Promise<void> {
+  const pool = getPool();
+  const store = getObjectStore();
+
+  const { rows: oldRows } = await pool.query<{
+    id: string; r2_key: string; content_hash: string; rename_in_progress: boolean;
+  }>(
+    `SELECT id, r2_key, content_hash, rename_in_progress FROM wiki_pages WHERE user_id = $1 AND path = $2 AND deleted_at IS NULL`,
+    [userId, oldPath]
+  );
+  if (oldRows.length === 0) {
+    const err = new Error('Page not found');
+    (err as NodeJS.ErrnoException).code = 'NOT_FOUND';
+    throw err;
+  }
+  const oldRow = oldRows[0];
+  if (oldRow.rename_in_progress) {
+    throw new RenameInProgressError(oldPath);
+  }
+  const oldPageId = oldRow.id;
+
+  const { rows: conflictRows } = await pool.query<{ id: string }>(
+    `SELECT id FROM wiki_pages WHERE user_id = $1 AND path = $2 AND deleted_at IS NULL`,
+    [userId, newPath]
+  );
+  if (conflictRows.length > 0) {
+    const err = new Error('A page already exists at the new path');
+    (err as NodeJS.ErrnoException).code = 'CONFLICT';
+    throw err;
+  }
+
+  const newR2Key = pageKey(userId, newPath);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE wiki_pages SET rename_in_progress = true WHERE id = $1`,
+      [oldPageId]
+    );
+    await client.query(
+      `UPDATE wiki_pages SET path = $1, r2_key = $2, updated_at = now() WHERE id = $3`,
+      [newPath, newR2Key, oldPageId]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    client.release();
+    throw err;
+  }
+  client.release();
+
+  const oldBody = await store.get(oldRow.r2_key);
+  await store.put(newR2Key, oldBody);
+  await store.delete(oldRow.r2_key);
+
+  const { rows: inboundRows } = await pool.query<{ source_page_id: string; r2_key: string }>(
+    `SELECT DISTINCT wl.source_page_id, wp.r2_key
+     FROM wiki_links wl
+     JOIN wiki_pages wp ON wp.id = wl.source_page_id
+     WHERE wl.target_path = $1 AND wp.user_id = $2`,
+    [oldPath, userId]
+  );
+
+  for (const inbound of inboundRows) {
+    const sourceBuf = await store.get(inbound.r2_key);
+    const sourceBody = sourceBuf.toString('utf-8');
+    const rewritten = replaceWikilinks(sourceBody, oldPath, newPath);
+    await store.put(inbound.r2_key, Buffer.from(rewritten, 'utf-8'));
+    await pool.query(
+      `UPDATE wiki_links SET target_path = $1 WHERE source_page_id = $2 AND target_path = $3`,
+      [newPath, inbound.source_page_id, oldPath]
+    );
+  }
+
+  await pool.query(
+    `INSERT INTO wiki_log (user_id, op, page_id, summary, actor)
+     VALUES ($1, 'rename', $2, $3, 'user')`,
+    [userId, oldPageId, `renamed ${oldPath} -> ${newPath}`]
+  );
+
+  await pool.query(
+    `UPDATE wiki_pages SET rename_in_progress = false WHERE id = $1`,
+    [oldPageId]
+  );
+
+  emit({ kind: 'rename', userId, pageId: oldPageId, path: newPath, oldPath });
 }
 
 export async function autocompletePaths(

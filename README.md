@@ -431,6 +431,19 @@ DATABASE_URL=postgresql://localhost:5432/sage_wiki PORT=3002 SAGE_WIKI_ENABLED=t
 
 Each instance needs its own `DATABASE_URL` so migrations don't collide. Both can share the same GitHub OAuth app as long as `OAUTH_REDIRECT_URI` matches the port you're testing. Set `SAGE_WIKI_ENABLED=true` only on the wiki-migration instance.
 
+### Phase 6: Wiki editing UI (`/wiki`)
+
+A full-featured wiki editing interface accessible at `/wiki` (link in the user menu).
+
+- **3-column layout** — page tree (left), editor/viewer (center), versions + activity log (right).
+- **Page tree** — all sections (`entities`, `concepts`, `comparisons`, `queries`, `raw`) with collapsible section headers and a "+ New page" form.
+- **CodeMirror 6 editor** — `@uiw/react-codemirror` with forest-palette theme, Markdown syntax highlighting, and wikilink autocomplete (`[[` triggers a debounced call to `/api/wiki/autocomplete`).
+- **If-Match conflict detection** — saves use the `If-Match` header; a 409 conflict shows a side-by-side merge UI with "Force overwrite" and "Reload theirs" options.
+- **Version restore** — right sidebar lists all prior versions; each has a "View" and "Restore" button.
+- **Rename with link-rewrite** — renames update all inbound `[[wikilink]]` references atomically; a yellow dot indicates a rename in progress.
+- **SCHEMA editor** — top-bar "Edit SCHEMA" button loads `SCHEMA.md` from R2 into the editor for direct editing.
+- **New server routes** — `PUT /api/wiki/pages/*`, `DELETE /api/wiki/pages/*`, `POST /api/wiki/pages/*/restore/:versionId`, `POST /api/wiki/pages/*/rename`, `GET /api/wiki/schema`, `PUT /api/wiki/schema`. All guarded by `isWikiEnabled()` and `requireAuth`.
+
 ### Phase 4: Per-role models + personal access tokens
 
 Per-role model assignments are now available in **Settings → Model assignments**. Each role (chat, wiki maintenance, fact extraction) defaults to your primary model but can be overridden to any provider/model independently. The resolver falls through: call-time override → conversation preferred model → role assignment → primary.

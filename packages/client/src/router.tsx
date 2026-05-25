@@ -11,6 +11,7 @@ import Memory from './pages/Memory.js';
 import Facts from './pages/Facts.js';
 import Import from './pages/Import.js';
 import Knowledge from './pages/Knowledge.js';
+import Wiki from './pages/Wiki.js';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -112,6 +113,14 @@ export default function AppRouter() {
           element={
             <RequireAuth>
               <Knowledge />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/wiki"
+          element={
+            <RequireAuth>
+              <Wiki />
             </RequireAuth>
           }
         />

@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import WikiRenderer from './WikiRenderer.js';
 
 interface WikiPageModalProps {
   isOpen: boolean;
@@ -16,30 +15,6 @@ interface VersionMeta {
   author: string;
   reason: string | null;
   createdAt: string;
-}
-
-function preprocessWikilinks(body: string): string {
-  return body.replace(/\[\[([^\]]+)\]\]/g, (_match, target: string) => {
-    return `[${target}](wiki://${encodeURIComponent(target)})`;
-  });
-}
-
-function FrontmatterBadges({ frontmatter }: { frontmatter: Record<string, unknown> }) {
-  const entries = Object.entries(frontmatter).filter(([k]) => k !== 'body');
-  if (entries.length === 0) return null;
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-      {entries.map(([key, value]) => (
-        <span
-          key={key}
-          className="memory-entry__type"
-          style={{ fontSize: '0.75rem' }}
-        >
-          {key}: {String(value)}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 export default function WikiPageModal({ isOpen, onClose, path: initialPath, versionId: initialVersionId }: WikiPageModalProps) {
@@ -111,9 +86,7 @@ export default function WikiPageModal({ isOpen, onClose, path: initialPath, vers
       .finally(() => setVersionsLoading(false));
   }, [versionsOpen, versions.length, currentPath]);
 
-  const handleWikilinkClick = useCallback((href: string) => {
-    if (!href.startsWith('wiki://')) return;
-    const target = decodeURIComponent(href.slice(7));
+  const loadPage = useCallback((target: string) => {
     setCurrentPath(target);
     setCurrentVersionId(undefined);
     setVersionsOpen(false);
@@ -121,8 +94,6 @@ export default function WikiPageModal({ isOpen, onClose, path: initialPath, vers
   }, []);
 
   if (!isOpen) return null;
-
-  const processed = body ? preprocessWikilinks(body) : null;
 
   return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={onClose}>
@@ -141,34 +112,7 @@ export default function WikiPageModal({ isOpen, onClose, path: initialPath, vers
           {loading && <p className="settings-info">Loading…</p>}
           {!loading && notFound && <p className="settings-info u-muted">Page not found.</p>}
           {!loading && !notFound && body !== null && (
-            <>
-              <FrontmatterBadges frontmatter={frontmatter} />
-              <div className="memory-entry" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-                <div className="memory-entry__body">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      a({ href, children, ...rest }) {
-                        if (href && href.startsWith('wiki://')) {
-                          return (
-                            <a
-                              {...rest}
-                              href="#"
-                              onClick={e => { e.preventDefault(); handleWikilinkClick(href); }}
-                            >
-                              {children}
-                            </a>
-                          );
-                        }
-                        return <a href={href} {...rest} target="_blank" rel="noreferrer">{children}</a>;
-                      },
-                    }}
-                  >
-                    {processed!}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            </>
+            <WikiRenderer body={body} frontmatter={frontmatter} onWikilinkClick={loadPage} />
           )}
         </div>
 
