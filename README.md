@@ -58,6 +58,8 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 
 ---
 
+For production deployment to Fly.io, see [DEPLOY.md](./DEPLOY.md).
+
 ## Quick Start
 
 ### 1. Clone & Install

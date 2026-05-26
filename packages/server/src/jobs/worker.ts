@@ -10,7 +10,7 @@ import { WIKI_INGEST_TURN, wikiIngestTurnHandler } from './handlers/wiki-ingest-
 import { cleanupStaleCacheDirs } from '../services/wiki/cache.js';
 import { logger } from '../logger.js';
 
-async function main() {
+async function startWorker() {
   const boss = await getBoss();
   boss.on('error', (err) => logger.error({ err }, 'pg-boss error'));
   await boss.createQueue(NOOP_JOB);
@@ -39,7 +39,22 @@ async function main() {
   process.on('SIGINT', shutdown);
 }
 
-main().catch((err) => {
+async function startWithRetry(maxAttempts = 10) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await startWorker();
+      return;
+    } catch (err) {
+      const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+      logger.warn({ err, attempt, delayMs }, '[worker] start failed, retrying');
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  logger.error('[worker] exhausted retries, exiting');
+  process.exit(1);
+}
+
+startWithRetry().catch((err) => {
   logger.error({ err }, 'worker fatal error');
   process.exit(1);
 });

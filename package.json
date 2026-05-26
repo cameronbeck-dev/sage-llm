@@ -12,7 +12,8 @@
     "dev:down": "docker compose down",
     "build": "npm run build -w packages/shared && npm run build -w packages/server && npm run build -w packages/client && node scripts/postbuild.mjs",
     "start": "node packages/server/dist/index.js",
-    "migrate": "node packages/server/dist/db/migrate.js"
+    "migrate": "node packages/server/dist/db/migrate.js",
+    "worker": "node packages/server/dist/jobs/worker.js"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",

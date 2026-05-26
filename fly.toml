@@ -1,0 +1,55 @@
+app = "sage-llm"
+primary_region = "syd"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "node packages/server/dist/db/migrate.js"
+  strategy = "rolling"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  OBJECT_STORE = "r2"
+  SAGE_WIKI_ENABLED = "true"
+
+[processes]
+  web = "node packages/server/dist/index.js"
+  worker = "node packages/server/dist/jobs/worker.js"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["web"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["web"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  processes = ["worker"]
