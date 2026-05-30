@@ -4,20 +4,92 @@ interface SageAvatarProps {
   state?: SageState;
 }
 
+const BODY: Array<[number, number]> = [
+  // Hat tip
+  [11, 0],
+  [11, 1],
+  [10, 2], [11, 2], [12, 2],
+  [10, 3], [11, 3], [12, 3], [13, 3],
+  [9, 4], [10, 4], [11, 4], [12, 4], [13, 4],
+  [9, 5], [10, 5], [11, 5], [12, 5], [13, 5], [14, 5],
+  [8, 6], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6], [14, 6],
+  [8, 7], [9, 7], [10, 7], [11, 7], [12, 7], [13, 7], [14, 7], [15, 7],
+  [7, 8], [8, 8], [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8], [15, 8],
+  // Star sparkle (plus-shape) next to hat
+  [17, 6],
+  [16, 7], [17, 7], [18, 7],
+  [17, 8],
+  // Hat brim
+  [4, 9], [5, 9], [6, 9], [7, 9], [8, 9], [9, 9], [10, 9], [11, 9], [12, 9], [13, 9], [14, 9], [15, 9], [16, 9], [17, 9], [18, 9],
+  [3, 10], [4, 10], [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [12, 10], [13, 10], [14, 10], [15, 10], [16, 10], [17, 10], [18, 10], [19, 10],
+  // Hair temples peeking under brim
+  [4, 11], [19, 11],
+  // Bushy eyebrows
+  [5, 12], [6, 12], [7, 12], [8, 12], [15, 12], [16, 12], [17, 12], [18, 12],
+  [6, 13], [7, 13], [16, 13], [17, 13],
+  // Nose
+  [11, 16], [12, 16],
+  [11, 17], [12, 17],
+  // Mustache (mouth gap at cols 11-12)
+  [7, 18], [8, 18], [9, 18], [10, 18], [13, 18], [14, 18], [15, 18], [16, 18],
+  // Beard row 19 (sides only — mouth is rendered in mouth group at center)
+  [6, 19], [7, 19], [8, 19], [9, 19], [10, 19], [13, 19], [14, 19], [15, 19], [16, 19], [17, 19],
+  // Beard row 20 (widest)
+  [5, 20], [6, 20], [7, 20], [8, 20], [9, 20], [10, 20], [11, 20], [12, 20], [13, 20], [14, 20], [15, 20], [16, 20], [17, 20], [18, 20],
+  // Beard row 21
+  [7, 21], [8, 21], [9, 21], [10, 21], [11, 21], [12, 21], [13, 21], [14, 21], [15, 21], [16, 21],
+  // Beard tip + robe shoulders (row 22)
+  [8, 22], [9, 22], [10, 22], [11, 22], [12, 22], [13, 22], [14, 22], [15, 22],
+  [2, 22], [3, 22], [4, 22], [5, 22], [18, 22], [19, 22], [20, 22], [21, 22],
+  // Beard end + robe shoulders wider (row 23)
+  [10, 23], [11, 23], [12, 23], [13, 23],
+  [1, 23], [2, 23], [3, 23], [4, 23], [5, 23], [18, 23], [19, 23], [20, 23], [21, 23], [22, 23],
+];
+
+const EYES: Array<[number, number]> = [
+  [7, 14], [8, 14], [15, 14], [16, 14],
+  [7, 15], [8, 15], [15, 15], [16, 15],
+];
+
+const MOUTH_BY_STATE: Record<SageState, Array<[number, number]>> = {
+  idle:     [[11, 19], [12, 19]],
+  thinking: [[11, 19], [12, 19]],
+  speaking: [[11, 19], [12, 19]],
+  happy:    [[10, 19], [11, 19], [12, 19], [13, 19], [11, 20], [12, 20]],
+  waiting:  [[11, 19]],
+  error:    [[10, 19], [11, 19], [12, 19], [13, 19]],
+};
+
 export default function SageAvatar({ state = 'idle' }: SageAvatarProps) {
+  const mouth = MOUTH_BY_STATE[state] ?? MOUTH_BY_STATE.idle;
   return (
     <div
       className={`sage-avatar-sprite sage-avatar-sprite--${state}`}
       aria-label={`Sage is ${state}`}
       role="img"
     >
-      <div className="sage-avatar-sprite__face">
-        <div className="sage-avatar-sprite__eyes">
-          <span className="sage-avatar-sprite__eye" />
-          <span className="sage-avatar-sprite__eye" />
-        </div>
-        <div className={`sage-avatar-sprite__mouth sage-avatar-sprite__mouth--${state}`} />
-      </div>
+      <svg
+        viewBox="0 0 24 24"
+        shapeRendering="crispEdges"
+        aria-hidden="true"
+        className="sage-avatar-sprite__svg"
+      >
+        <g className="sage-avatar-sprite__body">
+          {BODY.map(([x, y], i) => (
+            <rect key={`b${i}`} x={x} y={y} width={1} height={1} />
+          ))}
+        </g>
+        <g className="sage-avatar-sprite__eyes">
+          {EYES.map(([x, y], i) => (
+            <rect key={`e${i}`} x={x} y={y} width={1} height={1} />
+          ))}
+        </g>
+        <g className={`sage-avatar-sprite__mouth sage-avatar-sprite__mouth--${state}`}>
+          {mouth.map(([x, y], i) => (
+            <rect key={`m${i}`} x={x} y={y} width={1} height={1} />
+          ))}
+        </g>
+      </svg>
     </div>
   );
 }

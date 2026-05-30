@@ -785,8 +785,8 @@ body {
 /* ── Sage Avatar Sprite ─────────────────────────── */
 
 .sage-avatar-sprite {
-  width: 64px;
-  height: 64px;
+  width: 96px;
+  height: 96px;
   flex-shrink: 0;
   background: var(--bg-raised);
   border: 2px solid var(--accent);
@@ -794,102 +794,70 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--accent);
+  overflow: hidden;
   image-rendering: pixelated;
 }
 
-.sage-avatar-sprite__face {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.sage-avatar-sprite__eyes {
-  display: flex;
-  gap: 8px;
-}
-
-.sage-avatar-sprite__eye {
-  width: 6px;
-  height: 6px;
-  background: var(--accent);
+.sage-avatar-sprite__svg {
+  width: 100%;
+  height: 100%;
   display: block;
+  fill: currentColor;
 }
 
-.sage-avatar-sprite--thinking .sage-avatar-sprite__eye {
+/* Thinking — eyes blink */
+.sage-avatar-sprite--thinking .sage-avatar-sprite__eyes {
+  transform-origin: 12px 14.5px;
   animation: blink 1.4s step-end infinite;
 }
 
-.sage-avatar-sprite__mouth {
-  width: 14px;
-  height: 4px;
-  background: var(--accent);
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 98%      { transform: scaleY(0.1); }
 }
 
+/* Speaking — mouth pulses vertically */
 .sage-avatar-sprite__mouth--speaking {
+  transform-origin: 12px 20px;
   animation: speak 0.3s step-end infinite;
 }
 
 @keyframes speak {
-  0%   { height: 4px; }
-  50%  { height: 8px; }
-  100% { height: 4px; }
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(1.8); }
 }
 
-/* ── Sage Avatar: Happy State ─────────────────────── */
-
-.sage-avatar-sprite__mouth--happy {
-  width: 16px;
-  height: 8px;
-  border-radius: 0 0 8px 8px;
-  background: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
-}
-
-/* ── Sage Avatar: Error State ──────────────────────── */
-
+/* Error — whole wizard turns red, container shakes, eyes shake, mouth quivers */
 .sage-avatar-sprite--error {
   border-color: var(--danger);
+  color: var(--danger);
   animation: error-container-shake 0.4s ease-in-out infinite;
 }
 
-.sage-avatar-sprite--error .sage-avatar-sprite__eye {
-  background: var(--danger);
+.sage-avatar-sprite--error .sage-avatar-sprite__eyes {
   animation: error-eye-shake 0.15s ease-in-out infinite;
 }
 
 .sage-avatar-sprite--error .sage-avatar-sprite__mouth {
-  width: 14px;
-  height: 6px;
-  border-radius: 6px 6px 0 0;
-  background: var(--danger);
-  transform-origin: center bottom;
+  transform-origin: 12px 19.5px;
   animation: error-mouth-quiver 0.2s ease-in-out infinite;
 }
 
 @keyframes error-container-shake {
   0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
+  25%      { transform: translateX(-2px); }
+  75%      { transform: translateX(2px); }
 }
 
 @keyframes error-eye-shake {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+  50%      { transform: translateY(-0.5px); }
 }
 
 @keyframes error-mouth-quiver {
   0%, 100% { transform: scaleX(1); }
-  50% { transform: scaleX(0.85); }
-}
-
-/* ── Sage Avatar: Waiting State ───────────────────── */
-
-.sage-avatar-sprite__mouth--waiting {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
+  50%      { transform: scaleX(0.85); }
 }
 
 /* ── Sage Message Bubble ───────────────────────────── */
