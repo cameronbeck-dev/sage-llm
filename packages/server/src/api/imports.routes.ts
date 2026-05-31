@@ -13,7 +13,7 @@ export const importsRouter = Router();
 
 const upload = multer({
   dest: path.join(process.cwd(), 'var', 'uploads'),
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 },
 });
 
 const ALLOWED_EXTENSIONS = ['.zip', '.jsonl', '.json'];

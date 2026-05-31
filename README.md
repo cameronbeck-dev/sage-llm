@@ -42,6 +42,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 | **Auth** | GitHub OAuth via `cookie-session` |
 | **Encryption** | AES-256-GCM (`node:crypto`) |
 | **LLM Streaming** | Server-Sent Events (SSE) |
+| **Object Storage** | Postgres BYTEA-backed (`storage_blobs` table in production; local disk in dev) |
 | **Deployment** | Single Express serve; client built into `/public` |
 
 ---
@@ -49,7 +50,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 ## Prerequisites
 
 - Node.js 20+
-- PostgreSQL 14+ (or a hosted provider like Supabase, Neon, Render)
+- PostgreSQL 14+ (or a hosted provider like Supabase, Neon, Render, Heroku)
 - GitHub OAuth App ([create one](https://github.com/settings/developers))
 - Docker Desktop — required for the SearXNG container that powers `web_search`. Without it, chat still works but web tools are disabled.
   - **Windows**: `winget install -e --id Docker.DockerDesktop` (then launch Docker Desktop once to accept terms and let it initialise the WSL2 backend)
@@ -58,7 +59,7 @@ Sage is a cost-optimized, provider-agnostic LLM chat interface. Switch between O
 
 ---
 
-For production deployment to Fly.io, see [DEPLOY.md](./DEPLOY.md).
+For production deployment to Heroku, see the Deploy section below.
 
 ## Quick Start
 
@@ -97,14 +98,6 @@ DEFAULT_MODEL=gpt-4o-mini
 # Optional — leave empty to disable Sentry error reporting
 SENTRY_DSN=
 VITE_SENTRY_DSN=
-
-# Object storage: 'local' (dev) or 'r2' (Cloudflare R2)
-OBJECT_STORE=local
-# Required when OBJECT_STORE=r2:
-# R2_ACCOUNT_ID=
-# R2_ACCESS_KEY_ID=
-# R2_SECRET_ACCESS_KEY=
-# R2_BUCKET=
 ```
 
 ### 3. Create GitHub OAuth App
@@ -263,7 +256,7 @@ The page sniffs the file's content rather than trusting the extension, so a Clau
 
 **Flow:** upload → parse (asynchronous, status visible via 2-second polling) → preview the parsed conversation count and any per-conversation skips → click **Confirm** to commit. Committing creates archived conversations, summarises each, and extracts persistent facts into structured memory.
 
-**Limits:** 500 MB per file, 20 imports per day per user.
+**Limits:** 25 MB per file, 20 imports per day per user.
 
 **Re-uploads:** the same file (matched on SHA-256) won't double-import — successful or in-progress rows short-circuit and return the existing import id. **Failed imports** are dropped on re-upload so you can retry after fixing whatever went wrong.
 
@@ -307,30 +300,30 @@ After every assistant response, a unified triage LLM call (`services/extraction.
 
 ## Deployment
 
-### Render (Recommended)
+### Deploy to Heroku
 
-1. Create a **Web Service**
-2. Set build command: `npm run build`
-3. Set start command: `cd packages/server && npm start`
-4. Add environment variables from `.env.example`
-5. Provision a **Render PostgreSQL** and set `DATABASE_URL`
+The fastest path is the one-click button (uses `app.json`):
 
-### Heroku
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/CammyBeck/personal-llm)
+
+Or manually:
 
 ```bash
-heroku create sage-yourname
-heroku addons:create heroku-postgresql:standard-0
-heroku config:set \
-  SESSION_SECRET=<...> \
-  SAGE_ENC_KEY=<...> \
-  GITHUB_CLIENT_ID=xxx \
-  GITHUB_CLIENT_SECRET=xxx \
-  OAUTH_REDIRECT_URI=https://sage-yourname.herokuapp.com/api/auth/github/callback \
-  CLIENT_URL=https://sage-yourname.herokuapp.com
-git push heroku main
+heroku create my-sage-app
+heroku addons:create heroku-postgresql:basic
+heroku config:set NODE_ENV=production
+heroku config:set NPM_CONFIG_PRODUCTION=false
+heroku config:set SAGE_ENC_KEY=$(openssl rand -hex 32)
+heroku config:set SESSION_SECRET=$(openssl rand -hex 32)
+heroku config:set OPENAI_API_KEY=sk-...
+heroku config:set GITHUB_CLIENT_ID=...
+heroku config:set GITHUB_CLIENT_SECRET=...
+heroku config:set OAUTH_REDIRECT_URI=https://my-sage-app.herokuapp.com/api/auth/github/callback
+git push heroku master
+heroku ps:scale web=1:basic worker=1:basic
 ```
 
-The `Procfile` runs migrations in the release phase before the web process starts.
+Migrations run automatically via the `release` Procfile entry on every deploy.
 
 ---
 
@@ -443,7 +436,7 @@ A full-featured wiki editing interface accessible at `/wiki` (link in the user m
 - **If-Match conflict detection** — saves use the `If-Match` header; a 409 conflict shows a side-by-side merge UI with "Force overwrite" and "Reload theirs" options.
 - **Version restore** — right sidebar lists all prior versions; each has a "View" and "Restore" button.
 - **Rename with link-rewrite** — renames update all inbound `[[wikilink]]` references atomically; a yellow dot indicates a rename in progress.
-- **SCHEMA editor** — top-bar "Edit SCHEMA" button loads `SCHEMA.md` from R2 into the editor for direct editing.
+- **SCHEMA editor** — top-bar "Edit SCHEMA" button loads `SCHEMA.md` from object storage into the editor for direct editing.
 - **New server routes** — `PUT /api/wiki/pages/*`, `DELETE /api/wiki/pages/*`, `POST /api/wiki/pages/*/restore/:versionId`, `POST /api/wiki/pages/*/rename`, `GET /api/wiki/schema`, `PUT /api/wiki/schema`. All guarded by `isWikiEnabled()` and `requireAuth`.
 
 ### Phase 4: Per-role models + personal access tokens

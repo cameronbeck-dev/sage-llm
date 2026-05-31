@@ -4,6 +4,7 @@ import { insertPackChunk } from './_legacy/extraction.js';
 import { getOrphansByIds } from './_legacy/orphans.js';
 import { readPage, readVersion, writePage } from './wiki/store.js';
 import { getFact, deleteFact } from './facts/mem0Client.js';
+import { getObjectStore } from '../storage/index.js';
 import type { Message, WhisperAction } from '@sage/shared';
 import { rowToMessage } from './messages.js';
 
@@ -58,6 +59,7 @@ export async function handleWhisperAction(
     }
 
     const action: WhisperAction = actions[actionIndex];
+    let blobKeyToDelete: string | null = null;
 
     switch (action.kind) {
       case 'add_to_pack': {
@@ -95,6 +97,13 @@ export async function handleWhisperAction(
         );
         if (chunkRows.length > 0) {
           const fileId = chunkRows[0].file_id;
+          const { rows: fileRows } = await client.query<{ r2_key: string | null }>(
+            `SELECT r2_key FROM knowledge_files WHERE id = $1`,
+            [fileId]
+          );
+          if (fileRows.length > 0 && fileRows[0].r2_key) {
+            blobKeyToDelete = fileRows[0].r2_key;
+          }
           await client.query(`DELETE FROM knowledge_chunks WHERE id = $1`, [action.chunkId]);
           await client.query(`DELETE FROM knowledge_files WHERE id = $1`, [fileId]);
         }
@@ -188,6 +197,11 @@ export async function handleWhisperAction(
       [JSON.stringify(updatedActions), messageId]
     );
     await client.query('COMMIT');
+
+    if (blobKeyToDelete) {
+      getObjectStore().delete(blobKeyToDelete).catch(() => {});
+    }
+
     return updatedRows.length > 0 ? rowToMessage(updatedRows[0]) : lockedMessage;
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch { /* ignore rollback error if already rolled back */ }

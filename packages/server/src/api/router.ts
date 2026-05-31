@@ -13,10 +13,12 @@ import { knowledgeRouter } from './knowledge.routes.js';
 import { whispersRouter } from './whispers.routes.js';
 import { wikiRouter } from './wiki.routes.js';
 import { factsRouter } from './facts.routes.js';
+import { storageRouter } from './storage.routes.js';
 import { isWikiEnabled } from '../config/flags.js';
 
 export const apiRouter = Router();
 
+apiRouter.use('/storage', storageRouter);
 apiRouter.use('/', authRouter);
 apiRouter.use('/conversations', conversationsRouter);
 apiRouter.use('/conversations/:id/messages', messagesRouter);

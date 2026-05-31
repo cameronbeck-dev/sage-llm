@@ -68,6 +68,9 @@ messagesRouter.post('/', requireAuth, chatLimiter, async (req, res, next) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  const keepalive = setInterval(() => res.write(': keepalive\n\n'), 25_000);
+  req.on('close', () => clearInterval(keepalive));
+
   try {
     const modelOverride = provider && model ? { provider, model } : undefined;
     for await (const chunk of chatStream(req.session!.userId!, conversationId, message.trim(), previousId, modelOverride)) {
@@ -77,6 +80,7 @@ messagesRouter.post('/', requireAuth, chatLimiter, async (req, res, next) => {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     res.write(`data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`);
   } finally {
+    clearInterval(keepalive);
     res.end();
   }
 });

@@ -12,8 +12,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
-    "@aws-sdk/client-s3": "^3.1045.0",
-    "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "@mozilla/readability": "^0.6.0",
     "@sage/shared": "*",
     "@sentry/node": "^10.52.0",

@@ -16,11 +16,6 @@ const envSchema = z.object({
   DEFAULT_PROVIDER: z.string().default('openai'),
   DEFAULT_MODEL: z.string().default('gpt-4o-mini'),
   SENTRY_DSN: z.string().optional(),
-  OBJECT_STORE: z.enum(['local', 'r2']).default('local'),
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET: z.string().optional(),
   SAGE_WIKI_ENABLED: z.string().default('false').transform(v => v === 'true'),
   SEARXNG_URL: z.string().default('http://localhost:8080'),
   WEB_FETCH_USER_AGENT: z.string().default('Sage/1.0 (+https://sage.local)'),
@@ -28,15 +23,13 @@ const envSchema = z.object({
   WEB_FETCH_MAX_BYTES: z.coerce.number().default(5000000),
 });
 
-// Validate SAGE_ENC_KEY is present when running in production
-const result = envSchema.safeParse(process.env);
+export const config = envSchema.parse(process.env);
 
-if (!result.success && result.error.issues.some((i) => i.path.includes('SAGE_ENC_KEY'))) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('SAGE_ENC_KEY is required in production. Set it via your secrets manager (Heroku Secrets, AWS Secrets Manager, etc).');
-  }
-  // In dev/test, allow startup without the key — credential ops will fail at runtime
+// SAGE_ENC_KEY is optional in dev/test but required in production:
+// it backs credential encryption and HMAC signing of storage URLs.
+// Without it, signStorageToken would HMAC with an empty secret — forgeable.
+if (config.NODE_ENV === 'production' && !config.SAGE_ENC_KEY) {
+  throw new Error('SAGE_ENC_KEY is required in production. Set it via your secrets manager (Heroku Secrets, AWS Secrets Manager, etc).');
 }
 
-export const config = result.success ? result.data : envSchema.parse(process.env);
 export type Config = typeof config;

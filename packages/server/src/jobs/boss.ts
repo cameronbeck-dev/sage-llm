@@ -8,7 +8,7 @@ export async function getBoss(): Promise<PgBoss> {
   if (!config.DATABASE_URL) {
     throw new Error('DATABASE_URL is required for pg-boss');
   }
-  boss = new PgBoss({ connectionString: config.DATABASE_URL });
+  boss = new PgBoss({ connectionString: config.DATABASE_URL, max: 5 });
   await boss.start();
   return boss;
 }

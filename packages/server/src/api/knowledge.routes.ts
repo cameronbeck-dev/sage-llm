@@ -31,7 +31,7 @@ const ALLOWED_EXTENSIONS = new Set([
 
 const upload = multer({
   dest: path.join(process.cwd(), 'var', 'uploads'),
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ALLOWED_EXTENSIONS.has(ext)) {

@@ -64,8 +64,8 @@ async function main() {
     logger.warn('[startup] DATABASE_URL not set, skipping migrations');
   }
 
-  getObjectStore();
-  logger.info({ store: config.OBJECT_STORE }, 'object store initialized');
+  const store = getObjectStore();
+  logger.info({ store: store.constructor.name }, 'object store initialized');
 
   try {
     const boss = await getBoss();

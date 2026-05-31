@@ -290,19 +290,24 @@ export async function writePage({
 
 export async function deletePage(userId: string, path: string): Promise<void> {
   const pool = getPool();
-  const { rows } = await pool.query<{ id: string }>(
+  const { rows } = await pool.query<{ id: string; r2_key: string }>(
     `UPDATE wiki_pages SET deleted_at = now()
      WHERE user_id = $1 AND path = $2 AND deleted_at IS NULL
-     RETURNING id`,
+     RETURNING id, r2_key`,
     [userId, path]
   );
   if (rows.length === 0) return;
 
-  const pageId = rows[0].id;
+  const { id: pageId, r2_key } = rows[0];
   await pool.query(
     `INSERT INTO wiki_log (user_id, op, page_id, actor) VALUES ($1, 'delete', $2, 'user')`,
     [userId, pageId]
   );
+
+  await getObjectStore().delete(r2_key).catch(() => {});
+  // Version blobs intentionally retained for soft-delete resurrection: writePage can
+  // revive a deleted page via ON CONFLICT DO UPDATE, and existing wiki_page_versions
+  // rows must remain readable after resurrection.
 
   emit({ kind: 'page_deleted', userId, pageId, path });
 }

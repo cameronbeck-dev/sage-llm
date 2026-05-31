@@ -11,7 +11,7 @@ export function getPool(): pg.Pool {
     pool = new pg.Pool({
       connectionString: config.DATABASE_URL,
       ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10,
+      max: 5, // Heroku Basic has a 20-connection budget; leave headroom for pg-boss
     });
   }
   return pool;

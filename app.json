@@ -1,49 +1,49 @@
 {
-  "name": "sage",
-  "description": "Cost-optimized, provider-agnostic LLM chat interface",
-  "keywords": ["llm", "ai", "chat"],
+  "name": "Sage",
+  "description": "Your personal LLM with persistent memory, wiki, and chat.",
+  "repository": "https://github.com/CammyBeck/personal-llm",
+  "keywords": ["node", "express", "postgres", "llm", "personal-ai"],
+  "stack": "heroku-24",
   "buildpacks": [
     { "url": "heroku/nodejs" }
   ],
-  "formation": {
-    "web": {
-      "quantity": 1,
-      "size": "eco"
-    }
-  },
   "addons": [
-    {
-      "plan": "heroku-postgresql:essential-0"
-    }
+    { "plan": "heroku-postgresql:basic" }
   ],
   "env": {
-    "SESSION_SECRET": {
-      "description": "32+ byte random secret for signing cookies",
-      "generator": "secret"
+    "NODE_ENV": { "value": "production" },
+    "NPM_CONFIG_PRODUCTION": {
+      "description": "Keep devDependencies installed so the client (Vite) can build during deploy.",
+      "value": "false"
     },
     "SAGE_ENC_KEY": {
-      "description": "32-byte base64 key for AES-256-GCM encryption of API keys",
+      "description": "Secret used for encryption and HMAC signing of storage URLs.",
       "generator": "secret"
     },
+    "SESSION_SECRET": {
+      "description": "Express session secret.",
+      "generator": "secret"
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key for LLM calls.",
+      "required": true
+    },
     "GITHUB_CLIENT_ID": {
-      "description": "GitHub OAuth App client ID"
+      "description": "GitHub OAuth client ID.",
+      "required": true
     },
     "GITHUB_CLIENT_SECRET": {
-      "description": "GitHub OAuth App client secret"
+      "description": "GitHub OAuth client secret.",
+      "required": true
     },
     "OAUTH_REDIRECT_URI": {
-      "description": "GitHub OAuth callback URL (https://your-app.herokuapp.com/auth/github/callback)"
+      "description": "OAuth redirect URI, e.g. https://your-app.herokuapp.com/api/auth/github/callback",
+      "required": true
     },
-    "DEFAULT_PROVIDER": {
-      "description": "Default LLM provider ID",
-      "value": "openai"
-    },
-    "DEFAULT_MODEL": {
-      "description": "Default model ID",
-      "value": "gpt-4o-mini"
-    },
-    "NODE_ENV": {
-      "value": "production"
-    }
+    "SAGE_WIKI_ENABLED": { "value": "true" }
+  },
+  "formation": {
+    "web": { "quantity": 1, "size": "basic" },
+    "worker": { "quantity": 1, "size": "basic" }
   }
 }
