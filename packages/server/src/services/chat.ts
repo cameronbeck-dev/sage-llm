@@ -14,6 +14,7 @@ import { isWikiEnabled } from '../config/flags.js';
 import { getBoss } from '../jobs/boss.js';
 import { WIKI_INGEST_TURN } from '../jobs/handlers/wiki-ingest-turn.js';
 import * as maintainer from './wiki/maintainer.js';
+import { searchFacts } from './facts/mem0Client.js';
 import { getAllTools, getToolSchemas, getToolByName } from '../tools/registry.js';
 import { consumeToolCallToken } from '../middleware/rateLimit.js';
 import type { ContentBlock, SSEChunk } from '@sage/shared';
@@ -96,6 +97,7 @@ export async function* chatStream(
   const userPacks = await listPacks(userId);
 
   let wikiContext = '';
+  let factsContext = '';
   if (isWikiEnabled()) {
     await awaitPendingWikiIngest(conversationId, 5000);
     try {
@@ -107,6 +109,16 @@ export async function* chatStream(
     } catch (err) {
       console.warn('[chat] wiki queryForContext failed:', err);
       wikiContext = '';
+    }
+    try {
+      const facts = await searchFacts(userId, userMessage, 8);
+      if (facts.length > 0) {
+        const factsList = facts.map(f => `- ${f.text}`).join('\n');
+        factsContext = `## Relevant facts about the user\n\n${factsList}`;
+      }
+    } catch (err) {
+      console.warn('[chat] searchFacts failed:', err);
+      factsContext = '';
     }
   }
 
@@ -144,6 +156,7 @@ export async function* chatStream(
   }
 
   if (wikiContext) systemParts.push(wikiContext);
+  if (factsContext) systemParts.push(factsContext);
 
   systemParts.push('Memory policy: Do not mention memory updates in your response to the user. A whisper message will be sent automatically to inform the user of any memory changes.');
 
